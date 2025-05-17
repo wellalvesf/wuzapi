@@ -661,6 +661,7 @@ func (s *server) SendDocument() http.HandlerFunc {
 		Document    string
 		FileName    string
 		Id          string
+		MimeType    string
 		ContextInfo waE2E.ContextInfo
 	}
 
@@ -734,11 +735,16 @@ func (s *server) SendDocument() http.HandlerFunc {
 		}
 
 		msg := &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
-			URL:           proto.String(uploaded.URL),
-			FileName:      &t.FileName,
-			DirectPath:    proto.String(uploaded.DirectPath),
-			MediaKey:      uploaded.MediaKey,
-			Mimetype:      proto.String(http.DetectContentType(filedata)),
+			URL:        proto.String(uploaded.URL),
+			FileName:   &t.FileName,
+			DirectPath: proto.String(uploaded.DirectPath),
+			MediaKey:   uploaded.MediaKey,
+			Mimetype: proto.String(func() string {
+				if t.MimeType != "" {
+					return t.MimeType
+				}
+				return http.DetectContentType(filedata)
+			}()),
 			FileEncSHA256: uploaded.FileEncSHA256,
 			FileSHA256:    uploaded.FileSHA256,
 			FileLength:    proto.Uint64(uint64(len(filedata))),
@@ -906,6 +912,7 @@ func (s *server) SendImage() http.HandlerFunc {
 		Image       string
 		Caption     string
 		Id          string
+		MimeType    string
 		ContextInfo waE2E.ContextInfo
 	}
 
@@ -1005,11 +1012,16 @@ func (s *server) SendImage() http.HandlerFunc {
 		}
 
 		msg := &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
-			Caption:       proto.String(t.Caption),
-			URL:           proto.String(uploaded.URL),
-			DirectPath:    proto.String(uploaded.DirectPath),
-			MediaKey:      uploaded.MediaKey,
-			Mimetype:      proto.String(http.DetectContentType(filedata)),
+			Caption:    proto.String(t.Caption),
+			URL:        proto.String(uploaded.URL),
+			DirectPath: proto.String(uploaded.DirectPath),
+			MediaKey:   uploaded.MediaKey,
+			Mimetype: proto.String(func() string {
+				if t.MimeType != "" {
+					return t.MimeType
+				}
+				return http.DetectContentType(filedata)
+			}()),
 			FileEncSHA256: uploaded.FileEncSHA256,
 			FileSHA256:    uploaded.FileSHA256,
 			FileLength:    proto.Uint64(uint64(len(filedata))),
@@ -1056,6 +1068,7 @@ func (s *server) SendSticker() http.HandlerFunc {
 		Sticker      string
 		Id           string
 		PngThumbnail []byte
+		MimeType     string
 		ContextInfo  waE2E.ContextInfo
 	}
 
@@ -1123,10 +1136,15 @@ func (s *server) SendSticker() http.HandlerFunc {
 		}
 
 		msg := &waE2E.Message{StickerMessage: &waE2E.StickerMessage{
-			URL:           proto.String(uploaded.URL),
-			DirectPath:    proto.String(uploaded.DirectPath),
-			MediaKey:      uploaded.MediaKey,
-			Mimetype:      proto.String(http.DetectContentType(filedata)),
+			URL:        proto.String(uploaded.URL),
+			DirectPath: proto.String(uploaded.DirectPath),
+			MediaKey:   uploaded.MediaKey,
+			Mimetype: proto.String(func() string {
+				if t.MimeType != "" {
+					return t.MimeType
+				}
+				return http.DetectContentType(filedata)
+			}()),
 			FileEncSHA256: uploaded.FileEncSHA256,
 			FileSHA256:    uploaded.FileSHA256,
 			FileLength:    proto.Uint64(uint64(len(filedata))),
@@ -1174,6 +1192,7 @@ func (s *server) SendVideo() http.HandlerFunc {
 		Caption       string
 		Id            string
 		JPEGThumbnail []byte
+		MimeType      string
 		ContextInfo   waE2E.ContextInfo
 	}
 
@@ -1241,11 +1260,16 @@ func (s *server) SendVideo() http.HandlerFunc {
 		}
 
 		msg := &waE2E.Message{VideoMessage: &waE2E.VideoMessage{
-			Caption:       proto.String(t.Caption),
-			URL:           proto.String(uploaded.URL),
-			DirectPath:    proto.String(uploaded.DirectPath),
-			MediaKey:      uploaded.MediaKey,
-			Mimetype:      proto.String(http.DetectContentType(filedata)),
+			Caption:    proto.String(t.Caption),
+			URL:        proto.String(uploaded.URL),
+			DirectPath: proto.String(uploaded.DirectPath),
+			MediaKey:   uploaded.MediaKey,
+			Mimetype: proto.String(func() string {
+				if t.MimeType != "" {
+					return t.MimeType
+				}
+				return http.DetectContentType(filedata)
+			}()),
 			FileEncSHA256: uploaded.FileEncSHA256,
 			FileSHA256:    uploaded.FileSHA256,
 			FileLength:    proto.Uint64(uint64(len(filedata))),
