@@ -366,6 +366,27 @@
           "response": []
         },
         {
+          "name": "Edit Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Phone\": \"5491155553934\",\n  \"Id\": \"AABBCC11223344\",\n  \"Body\": \"New edited message body\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chat/send/edit",
+              "host": ["{{baseUrl}}"],
+              "path": ["chat", "send", "edit"]
+            },
+            "description": "Edit an existing message"
+          },
+          "response": []
+        },
+        {
           "name": "Send Image",
           "request": {
             "method": "POST",
@@ -661,6 +682,27 @@
             "description": "Set presence"
           },
           "response": []
+        },
+        {
+          "name": "Delete Message",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Phone\": \"5491155553934\",\n  \"Id\": \"AABBCC11223344\"}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/chat/delete",
+              "host": ["{{baseUrl}}"],
+              "path": ["chat", "delete"]
+            },
+            "description": "Delete a message from a chat."
+          },
+          "response": [ ]
         }
       ]
     },
@@ -925,6 +967,111 @@
             "description": "Change photo"
           },
           "response": []
+        },
+        {
+          "name": "Set Group Topic",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Topic\": \"New group topic here\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/topic",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "topic"]
+            },
+            "description": "Change the group topic/description"
+          },
+          "response": []
+        },
+        {
+          "name": "Set Group Announce",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Announce\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/announce",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "announce"]
+            },
+            "description": "Set group to announcement-only (admins only can send messages)"
+          },
+          "response": []
+        },
+        {
+          "name": "Group Join",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"InviteCode\": \"AbCdEfGhIjKlMnOp\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/join",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "join"]
+            },
+            "description": "Join a group using an invite code"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Group Invite Info",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"InviteCode\": \"AbCdEfGhIjKlMnOp\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/inviteinfo",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "inviteinfo"]
+            },
+            "description": "Get info about a group invite code"
+          },
+          "response": [ ]
+        },
+        {
+          "name": "Update Group Participants",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Action\": \"add\",\n  \"Participants\": [\"5491155553934@s.whatsapp.net\", \"5491155553935@s.whatsapp.net\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/updateparticipants",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "updateparticipants"]
+            },
+            "description": "Add or remove participants from a group. Action can be 'add' or 'remove'."
+          },
+          "response": [ ]
         }
       ]
     },
