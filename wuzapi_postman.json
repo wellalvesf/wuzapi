@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "b275f9a7-7fd5-4197-b5de-4e3a9c9d2d78",
-    "name": "WuzAPI Collection Completa",
-    "description": "API REST para interagir com WhatsApp usando a biblioteca whatsmeow.",
+    "name": "WuzAPI Complete Collection",
+    "description": "REST API for interacting with WhatsApp using the whatsmeow library.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -24,7 +24,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["admin", "users"]
             },
-            "description": "Lista usuários"
+            "description": "List users"
           },
           "response": []
         },
@@ -44,14 +44,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"usuario_teste\",\n  \"token\": \"token_do_usuario\"\n}"
+              "raw": "{\n  \"name\": \"test_user\",\n  \"token\": \"user_token\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/admin/users",
               "host": ["{{baseUrl}}"],
               "path": ["admin", "users"]
             },
-            "description": "Adiciona usuário"
+            "description": "Add user"
           },
           "response": []
         },
@@ -70,7 +70,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["admin", "users", "1"]
             },
-            "description": "Exclui usuário"
+            "description": "Delete user"
           },
           "response": []
         }
@@ -102,7 +102,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["session", "connect"]
             },
-            "description": "Conecta ao WhatsApp"
+            "description": "Connect to WhatsApp"
           },
           "response": []
         },
@@ -121,7 +121,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["session", "disconnect"]
             },
-            "description": "Desconecta"
+            "description": "Disconnect"
           },
           "response": []
         },
@@ -159,7 +159,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["session", "status"]
             },
-            "description": "Status"
+            "description": "Get status"
           },
           "response": []
         },
@@ -178,7 +178,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["session", "qr"]
             },
-            "description": "QR Code"
+            "description": "Get QR code"
           },
           "response": []
         },
@@ -205,7 +205,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["session", "pairphone"]
             },
-            "description": "Parear por telefone"
+            "description": "Pair by phone"
           },
           "response": []
         },
@@ -232,7 +232,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["session", "proxy"]
             },
-            "description": "Configurar proxy"
+            "description": "Set proxy"
           },
           "response": []
         }
@@ -256,7 +256,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["webhook"]
             },
-            "description": "Obter webhook"
+            "description": "Get webhook"
           },
           "response": []
         },
@@ -283,7 +283,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["webhook"]
             },
-            "description": "Configurar webhook"
+            "description": "Set webhook"
           },
           "response": []
         },
@@ -302,7 +302,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["webhook"]
             },
-            "description": "Remover webhook"
+            "description": "Delete webhook"
           },
           "response": []
         },
@@ -329,7 +329,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["webhook", "update"]
             },
-            "description": "Atualizar webhook"
+            "description": "Update webhook"
           },
           "response": []
         }
@@ -354,14 +354,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"Phone\": \"5491155553935\",\n  \"Body\": \"Olá, como você está?\"\n}"
+              "raw": "{\n  \"Phone\": \"5491155553935\",\n  \"Body\": \"Hello, how are you?\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/chat/send/text",
               "host": ["{{baseUrl}}"],
               "path": ["chat", "send", "text"]
             },
-            "description": "Enviar texto"
+            "description": "Send text"
           },
           "response": []
         },
@@ -381,14 +381,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"Phone\": \"5491155553935\",\n  \"Image\": \"data:image/jpeg;base64,/9j/\",\n  \"Caption\": \"Imagem\"\n}"
+              "raw": "{\n  \"Phone\": \"5491155553935\",\n  \"Image\": \"data:image/jpeg;base64,/9j/\",\n  \"Caption\": \"Image\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/chat/send/image",
               "host": ["{{baseUrl}}"],
               "path": ["chat", "send", "image"]
             },
-            "description": "Enviar imagem"
+            "description": "Send image"
           },
           "response": []
         },
@@ -415,7 +415,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["chat", "send", "audio"]
             },
-            "description": "Enviar áudio"
+            "description": "Send audio"
           },
           "response": []
         },
@@ -442,7 +442,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["chat", "send", "document"]
             },
-            "description": "Enviar documento"
+            "description": "Send document"
           },
           "response": []
         },
@@ -462,14 +462,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"Phone\": \"5491155553935\",\n  \"Video\": \"data:video/mp4;base64,/9j/\",\n  \"Caption\": \"Vídeo\"\n}"
+              "raw": "{\n  \"Phone\": \"5491155553935\",\n  \"Video\": \"data:video/mp4;base64,/9j/\",\n  \"Caption\": \"Video\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/chat/send/video",
               "host": ["{{baseUrl}}"],
               "path": ["chat", "send", "video"]
             },
-            "description": "Enviar vídeo"
+            "description": "Send video"
           },
           "response": []
         },
@@ -496,7 +496,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["chat", "send", "sticker"]
             },
-            "description": "Enviar sticker"
+            "description": "Send sticker"
           },
           "response": []
         },
@@ -516,14 +516,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"Phone\": \"5491155553935\",\n  \"Name\": \"Local\",\n  \"Latitude\": 48.858,\n  \"Longitude\": 2.294\n}"
+              "raw": "{\n  \"Phone\": \"5491155553935\",\n  \"Name\": \"Location\",\n  \"Latitude\": 48.858,\n  \"Longitude\": 2.294\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/chat/send/location",
               "host": ["{{baseUrl}}"],
               "path": ["chat", "send", "location"]
             },
-            "description": "Enviar localização"
+            "description": "Send location"
           },
           "response": []
         },
@@ -550,7 +550,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["chat", "send", "contact"]
             },
-            "description": "Enviar contato"
+            "description": "Send contact"
           },
           "response": []
         },
@@ -570,14 +570,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"Phone\": \"5491155553935\",\n  \"Content\": \"Título\",\n  \"Footer\": \"Rodapé\",\n  \"Buttons\": [\n    {\"DisplayText\":\"Sim\",\"Type\":\"quickreply\"}\n  ]\n}"
+              "raw": "{\n  \"Phone\": \"5491155553935\",\n  \"Content\": \"Title\",\n  \"Footer\": \"Footer\",\n  \"Buttons\": [\n    {\"DisplayText\":\"Yes\",\"Type\":\"quickreply\"}\n  ]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/chat/send/template",
               "host": ["{{baseUrl}}"],
               "path": ["chat", "send", "template"]
             },
-            "description": "Enviar template"
+            "description": "Send template"
           },
           "response": []
         },
@@ -604,7 +604,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["chat", "markread"]
             },
-            "description": "Marcar como lido"
+            "description": "Mark as read"
           },
           "response": []
         },
@@ -631,7 +631,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["chat", "react"]
             },
-            "description": "Reagir a mensagem"
+            "description": "React to message"
           },
           "response": []
         },
@@ -658,7 +658,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["chat", "presence"]
             },
-            "description": "Definir presença"
+            "description": "Set presence"
           },
           "response": []
         }
@@ -690,7 +690,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["user", "check"]
             },
-            "description": "Verificar usuários"
+            "description": "Check users"
           },
           "response": []
         },
@@ -717,7 +717,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["user", "info"]
             },
-            "description": "Informações de usuário"
+            "description": "Get user information"
           },
           "response": []
         },
@@ -744,7 +744,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["user", "presence"]
             },
-            "description": "Presença global"
+            "description": "Global presence"
           },
           "response": []
         },
@@ -771,7 +771,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["user", "avatar"]
             },
-            "description": "Obter avatar"
+            "description": "Get avatar"
           },
           "response": []
         },
@@ -790,7 +790,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["user", "contacts"]
             },
-            "description": "Listar contatos"
+            "description": "List contacts"
           },
           "response": []
         }
@@ -814,7 +814,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["group", "list"]
             },
-            "description": "Listar grupos"
+            "description": "List groups"
           },
           "response": []
         },
@@ -839,7 +839,7 @@
                 }
               ]
             },
-            "description": "Informações do grupo"
+            "description": "Get group information"
           },
           "response": []
         },
@@ -868,7 +868,7 @@
                 }
               ]
             },
-            "description": "Link de convite"
+            "description": "Get invite link"
           },
           "response": []
         },
@@ -888,14 +888,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Name\": \"Novo Nome\"\n}"
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Name\": \"New Name\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/group/name",
               "host": ["{{baseUrl}}"],
               "path": ["group", "name"]
             },
-            "description": "Alterar nome"
+            "description": "Change name"
           },
           "response": []
         },
@@ -922,7 +922,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["group", "photo"]
             },
-            "description": "Alterar foto"
+            "description": "Change photo"
           },
           "response": []
         }
@@ -946,7 +946,7 @@
               "host": ["{{baseUrl}}"],
               "path": ["newsletter", "list"]
             },
-            "description": "Listar newsletters"
+            "description": "List newsletters"
           },
           "response": []
         }
@@ -960,11 +960,11 @@
     },
     {
       "key": "token",
-      "value": "seu_token_aqui"
+      "value": "your_token_here"
     },
     {
       "key": "admin_token",
-      "value": "admin_token_aqui"
+      "value": "admin_token_here"
     }
   ]
 }
