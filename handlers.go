@@ -510,7 +510,7 @@ func (s *server) Logout() http.HandlerFunc {
 		} else {
 			if clientManager.GetWhatsmeowClient(txtid).IsLoggedIn() == true &&
 				clientManager.GetWhatsmeowClient(txtid).IsConnected() == true {
-				err := clientManager.GetWhatsmeowClient(txtid).Logout()
+				err := clientManager.GetWhatsmeowClient(txtid).Logout(context.Background())
 				if err != nil {
 					log.Error().Str("jid", jid).Msg("Could not perform logout")
 					s.Respond(w, r, http.StatusInternalServerError, errors.New("Could not perform logout"))
@@ -580,7 +580,7 @@ func (s *server) PairPhone() http.HandlerFunc {
 			return
 		}
 
-		linkingCode, err := clientManager.GetWhatsmeowClient(txtid).PairPhone(t.Phone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+		linkingCode, err := clientManager.GetWhatsmeowClient(txtid).PairPhone(context.Background(), t.Phone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 		if err != nil {
 			log.Error().Msg(fmt.Sprintf("%s", err))
 			s.Respond(w, r, http.StatusBadRequest, err)
@@ -1497,7 +1497,6 @@ func (s *server) SendLocation() http.HandlerFunc {
 }
 
 // Sends Buttons (not implemented, does not work)
-
 func (s *server) SendButtons() http.HandlerFunc {
 
 	type buttonStruct struct {
@@ -2223,6 +2222,7 @@ func (s *server) SendTemplate() http.HandlerFunc {
 	}
 }
 */
+
 // checks if users/phones are on Whatsapp
 func (s *server) CheckUser() http.HandlerFunc {
 
@@ -2356,6 +2356,7 @@ func (s *server) GetUser() http.HandlerFunc {
 	}
 }
 
+// Sets global presence status
 func (s *server) SendPresence() http.HandlerFunc {
 
 	type PresenceRequest struct {
@@ -2491,7 +2492,7 @@ func (s *server) GetContacts() http.HandlerFunc {
 		}
 
 		result := map[types.JID]types.ContactInfo{}
-		result, err := clientManager.GetWhatsmeowClient(txtid).Store.Contacts.GetAllContacts()
+		result, err := clientManager.GetWhatsmeowClient(txtid).Store.Contacts.GetAllContacts(context.Background())
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, err)
 			return
@@ -2624,7 +2625,7 @@ func (s *server) DownloadImage() http.HandlerFunc {
 		img := msg.GetImageMessage()
 
 		if img != nil {
-			imgdata, err = clientManager.GetWhatsmeowClient(txtid).Download(img)
+			imgdata, err = clientManager.GetWhatsmeowClient(txtid).Download(context.Background(), img)
 			if err != nil {
 				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to download image")
 				msg := fmt.Sprintf("Failed to download image %v", err)
@@ -2703,7 +2704,7 @@ func (s *server) DownloadDocument() http.HandlerFunc {
 		doc := msg.GetDocumentMessage()
 
 		if doc != nil {
-			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(doc)
+			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(context.Background(), doc)
 			if err != nil {
 				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to download document")
 				msg := fmt.Sprintf("Failed to download document %v", err)
@@ -2782,7 +2783,7 @@ func (s *server) DownloadVideo() http.HandlerFunc {
 		doc := msg.GetVideoMessage()
 
 		if doc != nil {
-			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(doc)
+			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(context.Background(), doc)
 			if err != nil {
 				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to download video")
 				msg := fmt.Sprintf("Failed to download video %v", err)
@@ -2861,7 +2862,7 @@ func (s *server) DownloadAudio() http.HandlerFunc {
 		doc := msg.GetAudioMessage()
 
 		if doc != nil {
-			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(doc)
+			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(context.Background(), doc)
 			if err != nil {
 				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to download audio")
 				msg := fmt.Sprintf("Failed to download audio %v", err)
@@ -3567,6 +3568,7 @@ func (s *server) SetGroupTopic() http.HandlerFunc {
 	}
 }
 
+// Leave group
 func (s *server) GroupLeave() http.HandlerFunc {
 
 	type groupLeaveStruct struct {
@@ -3813,6 +3815,7 @@ func (s *server) ListUsers() http.HandlerFunc {
 	}
 }
 
+// Add user
 func (s *server) AddUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -3939,6 +3942,7 @@ func (s *server) AddUser() http.HandlerFunc {
 	}
 }
 
+// Delete user
 func (s *server) DeleteUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -3985,6 +3989,7 @@ func (s *server) DeleteUser() http.HandlerFunc {
 	}
 }
 
+// Delete user complete
 func (s *server) DeleteUserComplete() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -4036,7 +4041,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 		if client := clientManager.GetWhatsmeowClient(id); client != nil {
 			if client.IsConnected() {
 				log.Info().Str("id", id).Msg("Logging out user")
-				client.Logout()
+				client.Logout(context.Background())
 			}
 			log.Info().Str("id", id).Msg("Disconnecting from WhatsApp")
 			client.Disconnect()
@@ -4085,6 +4090,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 	}
 }
 
+// Respond to client
 func (s *server) Respond(w http.ResponseWriter, r *http.Request, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -4115,6 +4121,7 @@ func (s *server) Respond(w http.ResponseWriter, r *http.Request, status int, dat
 	}
 }
 
+// Validate message fields
 func validateMessageFields(phone string, stanzaid *string, participant *string) (types.JID, error) {
 
 	recipient, ok := parseJID(phone)
@@ -4137,6 +4144,7 @@ func validateMessageFields(phone string, stanzaid *string, participant *string) 
 	return recipient, nil
 }
 
+// Set proxy
 func (s *server) SetProxy() http.HandlerFunc {
 	type proxyStruct struct {
 		ProxyURL string `json:"proxy_url"` // Format: "socks5://user:pass@host:port" or "http://host:port"

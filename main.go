@@ -175,10 +175,10 @@ func main() {
 			"user=%s password=%s dbname=%s host=%s port=%s sslmode=disable",
 			config.User, config.Password, config.Name, config.Host, config.Port,
 		)
-		container, err = sqlstore.New("postgres", storeConnStr, dbLog)
+		container, err = sqlstore.New(context.Background(), "postgres", storeConnStr, dbLog)
 	} else {
 		storeConnStr = "file:" + filepath.Join(config.Path, "main.db") + "?_pragma=foreign_keys(1)&_busy_timeout=3000"
-		container, err = sqlstore.New("sqlite", storeConnStr, dbLog)
+		container, err = sqlstore.New(context.Background(), "sqlite", storeConnStr, dbLog)
 	}
 
 	if err != nil {

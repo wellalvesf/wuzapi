@@ -132,7 +132,7 @@ func (s *server) startClient(userID string, textjid string, token string, subscr
 	// First handle the device store initialization
 	if textjid != "" {
 		jid, _ := parseJID(textjid)
-		deviceStore, err = container.GetDevice(jid)
+		deviceStore, err = container.GetDevice(context.Background(), jid)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get device")
 			deviceStore = container.NewDevice()
@@ -166,7 +166,7 @@ func (s *server) startClient(userID string, textjid string, token string, subscr
 
 	if textjid != "" {
 		jid, _ := parseJID(textjid)
-		deviceStore, err = container.GetDevice(jid)
+		deviceStore, err = container.GetDevice(context.Background(), jid)
 		if err != nil {
 			panic(err)
 		}
@@ -407,7 +407,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Download the image
-				data, err := mycli.WAClient.Download(img)
+				data, err := mycli.WAClient.Download(context.Background(), img)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to download image")
 					return
@@ -460,7 +460,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Download the audio
-				data, err := mycli.WAClient.Download(audio)
+				data, err := mycli.WAClient.Download(context.Background(), audio)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to download audio")
 					return
@@ -519,7 +519,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Download the document
-				data, err := mycli.WAClient.Download(document)
+				data, err := mycli.WAClient.Download(context.Background(), document)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to download document")
 					return
@@ -583,7 +583,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Download the video
-				data, err := mycli.WAClient.Download(video)
+				data, err := mycli.WAClient.Download(context.Background(), video)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to download video")
 					return
