@@ -734,7 +734,7 @@ method: **GET**
 
 ```
 curl -s -X GET -H 'Token: 1234ABCD' http://localhost:8080/group/list 
-````
+```
 
 Response:
 ```json
@@ -921,6 +921,131 @@ Response:
   "code": 200,
   "data": {
     "Details": "Group Name set successfully"
+  },
+  "success": true
+}
+```
+
+---
+
+## Create group
+
+Creates a new WhatsApp group with specified name and participants
+
+endpoint: _/group/create_
+
+method: **POST**
+
+```
+curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"name":"My New Group","participants":["5491155553934","5491155553935"]}' http://localhost:8080/group/create 
+```
+
+Response:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "JID": "120363123456789@g.us",
+    "Name": "My New Group",
+    "OwnerJID": "5491155554444@s.whatsapp.net",
+    "GroupCreated": "2023-12-01T10:00:00Z",
+    "Participants": [
+      {
+        "IsAdmin": true,
+        "IsSuperAdmin": true,
+        "JID": "5491155554444@s.whatsapp.net"
+      },
+      {
+        "IsAdmin": false,
+        "IsSuperAdmin": false,
+        "JID": "5491155553934@s.whatsapp.net"
+      }
+    ]
+  },
+  "success": true
+}
+```
+
+---
+
+## Set group locked status
+
+Configures whether only admins can modify group info (locked) or all participants can modify (unlocked)
+
+endpoint: _/group/locked_
+
+method: **POST**
+
+```
+curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"groupjid":"120362023605733675@g.us","locked":true}' http://localhost:8080/group/locked 
+```
+
+Response:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "Details": "Group locked setting updated successfully"
+  },
+  "success": true
+}
+```
+
+---
+
+## Set disappearing timer
+
+Configures ephemeral/disappearing messages for the group. Messages will automatically disappear after the specified duration.
+
+endpoint: _/group/ephemeral_
+
+method: **POST**
+
+```
+curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"groupjid":"120362023605733675@g.us","duration":"24h"}' http://localhost:8080/group/ephemeral 
+```
+
+Valid duration values:
+- `"24h"` - 24 hours
+- `"7d"` - 7 days  
+- `"90d"` - 90 days
+- `"off"` - Disable disappearing messages
+
+Response:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "Details": "Disappearing timer set successfully"
+  },
+  "success": true
+}
+```
+
+---
+
+## Remove group photo
+
+Removes the current photo/image from the specified WhatsApp group
+
+endpoint: _/group/photo/remove_
+
+method: **POST**
+
+```
+curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"groupjid":"120362023605733675@g.us"}' http://localhost:8080/group/photo/remove 
+```
+
+Response:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "Details": "Group photo removed successfully"
   },
   "success": true
 }

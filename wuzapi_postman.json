@@ -842,6 +842,90 @@
       "name": "Group",
       "item": [
         {
+          "name": "Create Group",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My New Group\",\n  \"participants\": [\"5491155553934\", \"5491155553935\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "create"]
+            },
+            "description": "Create a new WhatsApp group with specified name and participants"
+          },
+          "response": [ ]
+        },
+        {
+          "name": "Set Group Locked",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"groupjid\": \"120362023605733675@g.us\",\n  \"locked\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/locked",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "locked"]
+            },
+            "description": "Configure group as locked (only admins can alter info) or unlocked"
+          },
+          "response": [ ]
+        },
+        {
+          "name": "Set Disappearing Timer",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"groupjid\": \"120362023605733675@g.us\",\n  \"duration\": \"24h\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/ephemeral",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "ephemeral"]
+            },
+            "description": "Configure disappearing messages. Use '24h', '7d', '90d', or 'off'"
+          },
+          "response": [ ]
+        },
+        {
+          "name": "Remove Group Photo",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"groupjid\": \"120362023605733675@g.us\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/photo/remove",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "photo", "remove"]
+            },
+            "description": "Remove the current photo from a WhatsApp group"
+          },
+          "response": [ ]
+        },
+        {
           "name": "List Groups",
           "request": {
             "method": "GET",

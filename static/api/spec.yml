@@ -104,7 +104,7 @@ paths:
           content:
             application/json:
               schema:
-                example: {"code": 200, "data": {"Newsletter": [{"id": "120363144038483540@newsletter", "state": {"type": "active" }, "thread_metadata": {"creation_time": "1688746895", "description": {"id": "1689653839450668", "text": "WhatsApp’s official channel. Follow for our latest feature launches, updates, exclusive drops and more.", "update_time": "1689653839450668" }, "invite": "0029Va4K0PZ5a245NkngBA2M", "name": {"id": "1688746895480511", "text": "WhatsApp", "update_time": "1688746895480511" }, "picture": {"direct_path": "/v/t61.24694-24/416962407_970228831134395_8869146381947923973_n.jpg?ccb=11-4&oh=01_Q5AaIRyTfP806JEGJDm0XWU5E-D4LcA-Wj3csSwh1jJTVanC&oe=67D550F1&_nc_sid=5e03e0&_nc_cat=110", "id": "1707950960975554", "type": "IMAGE", "url": "" }, "preview": {"direct_path": "/v/t61.24694-24/416962407_970228831134395_8869146381947923973_n.jpg?stp=dst-jpg_s192x192_tt6&ccb=11-4&oh=01_Q5AaIawuPXJUw9grRFJZtAJEc6QNm0XpqJq4X1Ssi9xNI0Qf&oe=67D550F1&_nc_sid=5e03e0&_nc_cat=110", "id": "1707950960975554", "type": "PREVIEW", "url": "" }, "settings": {"reaction_codes": {"value": "ALL" } }, "subscribers_count": "0", "verification": "verified" }, "viewer_metadata": {"mute": "on", "role": "subscriber" } } ] }, "success": true }
+                example: {"code": 200, "data": {"Newsletter": [{"id": "120363144038483540@newsletter", "state": {"type": "active" }, "thread_metadata": {"creation_time": "1688746895", "description": {"id": "1689653839450668", "text": "WhatsApp's official channel. Follow for our latest feature launches, updates, exclusive drops and more.", "update_time": "1689653839450668" }, "invite": "0029Va4K0PZ5a245NkngBA2M", "name": {"id": "1688746895480511", "text": "WhatsApp", "update_time": "1688746895480511" }, "picture": {"direct_path": "/v/t61.24694-24/416962407_970228831134395_8869146381947923973_n.jpg?ccb=11-4&oh=01_Q5AaIRyTfP806JEGJDm0XWU5E-D4LcA-Wj3csSwh1jJTVanC&oe=67D550F1&_nc_sid=5e03e0&_nc_cat=110", "id": "1707950960975554", "type": "IMAGE", "url": "" }, "preview": {"direct_path": "/v/t61.24694-24/416962407_970228831134395_8869146381947923973_n.jpg?stp=dst-jpg_s192x192_tt6&ccb=11-4&oh=01_Q5AaIawuPXJUw9grRFJZtAJEc6QNm0XpqJq4X1Ssi9xNI0Qf&oe=67D550F1&_nc_sid=5e03e0&_nc_cat=110", "id": "1707950960975554", "type": "PREVIEW", "url": "" }, "settings": {"reaction_codes": {"value": "ALL" } }, "subscribers_count": "0", "verification": "verified" }, "viewer_metadata": {"mute": "on", "role": "subscriber" } } ] }, "success": true }
   /webhook:
     get:
       tags:
@@ -211,7 +211,6 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "webhook": "https://example.net/webhook", "events": ["Message", "ReadReceipt"], "active": true }, "success": true }
-
   /session/connect:
     post:
       tags:
@@ -434,7 +433,6 @@ paths:
             application/json:
               schema:
                 example: {"code": 400,"error": "Invalid presence type. Allowed values: 'available', 'unavailable'","success": false}
-
   /user/avatar:
     post:
       tags:
@@ -495,7 +493,6 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "Details": "Message deleted" }, "success": true }
-
   /chat/markread:
     post:
       tags:
@@ -695,8 +692,7 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Details":"Sent","Id":"90B2F8B13FAC8A9CF6B06E99C7834DC5","Timestamp":"2022-04-20T12:49:08-03:00"},"success":true}
- 
-  /chat/send/template:
+   /chat/send/template:
     post:
       tags:
         - Chat 
@@ -762,8 +758,7 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Details":"Sent","Id":"90B2F8B13FAC8A9CF6B06E99C7834DC5","Timestamp":"2022-04-20T12:49:08-03:00"},"success":true}
- 
-  /chat/send/location:
+   /chat/send/location:
     post:
       tags:
         - Chat 
@@ -785,8 +780,7 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Details":"Sent","Id":"90B2F8B13FAC8A9CF6B06E99C7834DC5","Timestamp":"2022-04-20T12:49:08-03:00"},"success":true}
- 
-  /chat/send/contact:
+   /chat/send/contact:
     post:
       tags:
         - Chat 
@@ -829,7 +823,6 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Details":"Sent","Id":"90B2F8B13FAC8A9CF6B06E99C7834DC5","Timestamp":"2022-04-20T12:49:08-03:00"},"success":true}
-
   /chat/downloadimage:
     post:
       tags:
@@ -852,7 +845,6 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Data":"data:image/jpeg;base64,iVBORw0KGgoA5CYII...=","Mimetype":"image/jpeg"},"success":true}
-
   /chat/downloadvideo:
     post:
       tags:
@@ -875,7 +867,6 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Data":"data:video/mp4;base64,iVBORw0KGgoA5CYII...=","Mimetype":"video/mp4"},"success":true}
-
   /chat/downloaddocument:
     post:
       tags:
@@ -898,7 +889,6 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Data":"data:application/pdf;base64,iVBORw0KGgoA5CYII...=","Mimetype":"application/pdf"},"success":true}
-
   /chat/presence:
     post:
       tags:
@@ -921,7 +911,70 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "Details": "Chat presence set successfuly" }, "success": true } 
-
+  /group/create:
+    post:
+      tags:
+        - Group
+      summary: Create a new WhatsApp group
+      description: Creates a new WhatsApp group with the specified name and participants.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/CreateGroup'
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                example: { "code": 200, "data": { "AnnounceVersionID": "1234567890", "DisappearingTimer": 0, "GroupCreated": "2023-12-01T10:00:00Z", "IsAnnounce": false, "IsEphemeral": false, "IsLocked": false, "JID": "120363123456789@g.us", "Name": "My New Group", "NameSetAt": "2023-12-01T10:00:00Z", "NameSetBy": "5491155554444@s.whatsapp.net", "OwnerJID": "5491155554444@s.whatsapp.net", "ParticipantVersionID": "1234567890", "Participants": [{"IsAdmin": true, "IsSuperAdmin": true, "JID": "5491155554444@s.whatsapp.net"}, {"IsAdmin": false, "IsSuperAdmin": false, "JID": "5491155553333@s.whatsapp.net"}] }, "success": true }
+  /group/locked:
+    post:
+      tags:
+        - Group
+      summary: Set group locked status
+      description: Configures whether only admins can modify group info (locked) or all participants can modify (unlocked).
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/GroupLocked'
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                example: { "code": 200, "data": { "Details": "Group locked setting updated successfully" }, "success": true }
+  /group/ephemeral:
+    post:
+      tags:
+        - Group
+      summary: Set disappearing timer for group messages
+      description: Configures ephemeral/disappearing messages for the group. Messages will automatically disappear after the specified duration.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/GroupEphemeral'
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                example: { "code": 200, "data": { "Details": "Disappearing timer set successfully" }, "success": true }
+  /group/photo/remove:
   /group/list:
     get:
       tags:
@@ -988,7 +1041,6 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "AnnounceVersionID": "1650572126123738", "DisappearingTimer": 0, "GroupCreated": "2022-04-21T17:15:26-03:00", "IsAnnounce": false, "IsEphemeral": false, "IsLocked": false, "JID": "120362023605733675@g.us", "Name": "Super Group", "NameSetAt": "2022-04-21T17:15:26-03:00", "NameSetBy": "5491155554444@s.whatsapp.net", "OwnerJID": "5491155554444@s.whatsapp.net", "ParticipantVersionID": "1650234126145738", "Participants": [ { "IsAdmin": true, "IsSuperAdmin": true, "JID": "5491155554444@s.whatsapp.net" }, { "IsAdmin": false, "IsSuperAdmin": false, "JID": "5491155553333@s.whatsapp.net" }, { "IsAdmin": false, "IsSuperAdmin": false, "JID": "5491155552222@s.whatsapp.net" } ], "Topic": "", "TopicID": "", "TopicSetAt": "0001-01-01T00:00:00Z", "TopicSetBy": "" }, "success": true }
-
   /group/photo:
     post:
       tags:
@@ -1011,7 +1063,6 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "Details": "Group Photo set successfully", "PictureID": "1222332123" }, "success": true }
-
   /group/leave:
     post:
       tags:
@@ -1033,7 +1084,6 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "Details": "Left group successfully" }, "success": true }
-
   /group/name:
     post:
       tags:
@@ -1055,7 +1105,6 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "Details": "Group Name set successfully" }, "success": true }
-
   /group/topic:
     post:
       tags:
@@ -1077,7 +1126,6 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "Details": "Group Topic set successfully" }, "success": true }
-
   /group/announce:
     post:
       tags:
@@ -1099,7 +1147,6 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "Details": "Group Announce mode set successfully" }, "success": true }
-
   /group/join:
     post:
       tags:
@@ -1121,7 +1168,6 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "Details": "Joined group successfully" }, "success": true }
-
   /group/inviteinfo:
     post:
       tags:
@@ -1143,7 +1189,6 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "InviteInfo": { "GroupName": "Test Group", "GroupJID": "120363312246943103@g.us" } }, "success": true }
-
   /group/updateparticipants:
     post:
       tags:
@@ -1165,6 +1210,27 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "Details": "Participants updated successfully" }, "success": true }
+
+    post:
+      tags:
+        - Group
+      summary: Remove group photo
+      description: Removes the current photo/image from the specified WhatsApp group.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/RemoveGroupPhoto'
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                example: { "code": 200, "data": { "Details": "Group photo removed successfully" }, "success": true }
 definitions:
   User:
     type: object
@@ -1791,6 +1857,65 @@ definitions:
           type: string
           description: List of participant JIDs (e.g., 5491112345678@s.whatsapp.net)
         example: [ "5491112345678@s.whatsapp.net", "5491123456789@s.whatsapp.net" ]
+
+  CreateGroup:
+    type: object
+    required:
+      - name
+      - participants
+    properties:
+      name:
+        type: string
+        description: The name for the new group
+        example: "My New Group"
+      participants:
+        type: array
+        items:
+          type: string
+          description: List of participant phone numbers (without country code prefix symbols)
+        example: [ "5491112345678", "5491123456789" ]
+
+  GroupLocked:
+    type: object
+    required:
+      - groupjid
+      - locked
+    properties:
+      groupjid:
+        type: string
+        description: The JID of the group to configure
+        example: "120363312246943103@g.us"
+      locked:
+        type: boolean
+        description: Whether to lock the group (true) or unlock it (false). When locked, only admins can modify group info.
+        example: true
+
+  GroupEphemeral:
+    type: object
+    required:
+      - groupjid
+      - duration
+    properties:
+      groupjid:
+        type: string
+        description: The JID of the group to configure ephemeral messages
+        example: "120363312246943103@g.us"
+      duration:
+        type: string
+        description: Duration for disappearing messages. Use "24h" for 24 hours, "7d" for 7 days, "90d" for 90 days, or "off" to disable.
+        enum: ["24h", "7d", "90d", "off"]
+        example: "24h"
+
+  RemoveGroupPhoto:
+    type: object
+    required:
+      - groupjid
+    properties:
+      groupjid:
+        type: string
+        description: The JID of the group to remove the photo from
+        example: "120363312246943103@g.us"
+
 components:
   securitySchemes:
     ApiKeyAuth:

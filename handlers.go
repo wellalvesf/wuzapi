@@ -3238,6 +3238,256 @@ func (s *server) GroupJoin() http.HandlerFunc {
 	}
 }
 
+// Create group
+func (s *server) CreateGroup() http.HandlerFunc {
+
+	type createGroupStruct struct {
+		Name         string   `json:"name"`
+		Participants []string `json:"participants"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			return
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var t createGroupStruct
+		err := decoder.Decode(&t)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			return
+		}
+
+		if t.Name == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Name in Payload"))
+			return
+		}
+
+		if len(t.Participants) < 1 {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Participants in Payload"))
+			return
+		}
+
+		// Parse participant phone numbers
+		participantJIDs := make([]types.JID, len(t.Participants))
+		var ok bool
+		for i, phone := range t.Participants {
+			participantJIDs[i], ok = parseJID(phone)
+			if !ok {
+				s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Participant Phone"))
+				return
+			}
+		}
+
+		req := whatsmeow.ReqCreateGroup{
+			Name:         t.Name,
+			Participants: participantJIDs,
+		}
+
+		groupInfo, err := clientManager.GetWhatsmeowClient(txtid).CreateGroup(req)
+
+		if err != nil {
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to create group")
+			msg := fmt.Sprintf("Failed to create group: %v", err)
+			s.Respond(w, r, http.StatusInternalServerError, msg)
+			return
+		}
+
+		responseJson, err := json.Marshal(groupInfo)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+
+		return
+	}
+}
+
+// Set group locked
+func (s *server) SetGroupLocked() http.HandlerFunc {
+
+	type setGroupLockedStruct struct {
+		GroupJID string `json:"groupjid"`
+		Locked   bool   `json:"locked"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			return
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var t setGroupLockedStruct
+		err := decoder.Decode(&t)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			return
+		}
+
+		group, ok := parseJID(t.GroupJID)
+		if !ok {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			return
+		}
+
+		err = clientManager.GetWhatsmeowClient(txtid).SetGroupLocked(group, t.Locked)
+
+		if err != nil {
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to set group locked")
+			msg := fmt.Sprintf("Failed to set group locked: %v", err)
+			s.Respond(w, r, http.StatusInternalServerError, msg)
+			return
+		}
+
+		response := map[string]interface{}{"Details": "Group Locked setting updated successfully"}
+		responseJson, err := json.Marshal(response)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+
+		return
+	}
+}
+
+// Set disappearing timer (ephemeral messages)
+func (s *server) SetDisappearingTimer() http.HandlerFunc {
+
+	type setDisappearingTimerStruct struct {
+		GroupJID string `json:"groupjid"`
+		Duration string `json:"duration"` // "24h", "7d", "90d", "off"
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			return
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var t setDisappearingTimerStruct
+		err := decoder.Decode(&t)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			return
+		}
+
+		group, ok := parseJID(t.GroupJID)
+		if !ok {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			return
+		}
+
+		if t.Duration == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Duration in Payload"))
+			return
+		}
+
+		var duration time.Duration
+		switch t.Duration {
+		case "24h":
+			duration = 24 * time.Hour
+		case "7d":
+			duration = 7 * 24 * time.Hour
+		case "90d":
+			duration = 90 * 24 * time.Hour
+		case "off":
+			duration = 0
+		default:
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Invalid duration. Use: 24h, 7d, 90d, or off"))
+			return
+		}
+
+		err = clientManager.GetWhatsmeowClient(txtid).SetDisappearingTimer(group, duration)
+
+		if err != nil {
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to set disappearing timer")
+			msg := fmt.Sprintf("Failed to set disappearing timer: %v", err)
+			s.Respond(w, r, http.StatusInternalServerError, msg)
+			return
+		}
+
+		response := map[string]interface{}{"Details": "Disappearing timer set successfully"}
+		responseJson, err := json.Marshal(response)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+
+		return
+	}
+}
+
+// Remove group photo
+func (s *server) RemoveGroupPhoto() http.HandlerFunc {
+
+	type removeGroupPhotoStruct struct {
+		GroupJID string `json:"groupjid"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			return
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var t removeGroupPhotoStruct
+		err := decoder.Decode(&t)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			return
+		}
+
+		group, ok := parseJID(t.GroupJID)
+		if !ok {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			return
+		}
+
+		_, err = clientManager.GetWhatsmeowClient(txtid).SetGroupPhoto(group, nil)
+
+		if err != nil {
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to remove group photo")
+			msg := fmt.Sprintf("Failed to remove group photo: %v", err)
+			s.Respond(w, r, http.StatusInternalServerError, msg)
+			return
+		}
+
+		response := map[string]interface{}{"Details": "Group Photo removed successfully"}
+		responseJson, err := json.Marshal(response)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+
+		return
+	}
+}
+
 // add, remove, promote and demote members group
 func (s *server) UpdateGroupParticipants() http.HandlerFunc {
 
@@ -4224,3 +4474,4 @@ func (s *server) SetProxy() http.HandlerFunc {
 		}
 	}
 }
+
