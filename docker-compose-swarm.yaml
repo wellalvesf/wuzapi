@@ -13,9 +13,7 @@ services:
       - DB_HOST=db
       - DB_PORT=5432
       - TZ=America/Sao_Paulo
-    volumes:
-      - wuzapi_dbdata:/app/dbdata
-      - wuzapi_files:/app/files
+      - WEBHOOK_FORMAT=json
     deploy:
       mode: replicated
       replicas: 1
@@ -46,11 +44,3 @@ networks:
   network_public:
     name: network_public
     external: true
-
-volumes:
-  wuzapi_dbdata:
-    external: true
-    name: wuzapi_dbdata
-  wuzapi_files:
-    external: true
-    name: wuzapi_files
