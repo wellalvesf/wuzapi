@@ -117,7 +117,7 @@
   </div>
 
   <!-- Dashboard -->
-  <div class="ui container fluid p1 hidden maingrid">
+  <div class="ui container fluid p1 hidden maingrid" id="mainDashboard">
 
     <div class="ui horizontal divider widget"> Chat </div>
 
@@ -158,6 +158,106 @@
       </div>
     </div>
 
+    <div class="ui horizontal divider widget"> Groups </div>
+    <div class="ui three column stackable grid cards">
+      <div class="green card hidden widget" style="cursor: pointer;" id="groupsList">
+        <div class="content"><a class="ui green right ribbon label">Groups</a>
+          <div class="header">List Groups</div>
+          <div class="description">View all your WhatsApp groups.</div>
+        </div>
+      </div>
+      <div class="green card hidden widget" style="cursor: pointer;" id="createGroup">
+        <div class="content"><a class="ui green right ribbon label">Groups</a>
+          <div class="header">Create Group</div>
+          <div class="description">Create a new WhatsApp group.</div>
+        </div>
+      </div>
+      <div class="green card hidden widget" style="cursor: pointer;" id="joinGroup">
+        <div class="content"><a class="ui green right ribbon label">Groups</a>
+          <div class="header">Join Group</div>
+          <div class="description">Join a group using invite link.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Groups Main Container -->
+  <div class="ui container fluid p1 hidden" id="groupsMainContainer">
+    <!-- Main Header -->
+    <div class="ui container fluid main-header">
+      <div class="ui stackable grid">
+        <div class="row">
+          <div class="left floated left aligned ten wide column">
+            <h1 class="ui header">
+              <i class="users icon"></i>
+              <div class="content">
+                Groups Manager
+                <div class="sub header">Manage your WhatsApp groups</div>
+              </div>
+            </h1>
+          </div>
+          <div class="right floated right aligned six wide column">
+            <button class="ui primary button" id="backToDashboard">
+              <i class="left arrow icon"></i> Back to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Groups Filter and Search -->
+    <div class="ui segment">
+      <div class="ui stackable grid">
+        <div class="six wide column">
+          <div class="ui icon input fluid">
+            <input type="text" id="groupsSearch" placeholder="Search groups by name or description...">
+            <i class="search icon"></i>
+          </div>
+        </div>
+        <div class="four wide column">
+          <select class="ui fluid dropdown" id="groupsFilter">
+            <option value="">All Groups</option>
+            <option value="normal">Normal Groups</option>
+            <option value="community">Communities</option>
+            <option value="community_group">Community Groups</option>
+          </select>
+        </div>
+        <div class="three wide column">
+          <div class="ui basic buttons fluid">
+            <button class="ui button" id="refreshGroups">
+              <i class="refresh icon"></i> Refresh
+            </button>
+          </div>
+        </div>
+        <div class="three wide column">
+          <button class="ui green button fluid" id="createNewGroup">
+            <i class="plus icon"></i> Create Group
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Groups Loading -->
+    <div class="ui active inverted dimmer" id="groupsLoading">
+      <div class="ui text loader">Loading groups...</div>
+    </div>
+
+    <!-- Groups List Container -->
+    <div class="ui relaxed divided list" id="groupsListContainer">
+      <!-- Groups will be populated here -->
+    </div>
+
+    <!-- No Groups Message -->
+    <div class="ui placeholder segment hidden" id="noGroupsMessage">
+      <div class="ui icon header">
+        <i class="users icon"></i>
+        No groups found
+      </div>
+      <div class="inline">
+        <div class="ui primary button" id="createFirstGroup">Create your first group</div>
+      </div>
+    </div>
   </div>
 
   <!-- Session Modals -->
@@ -335,8 +435,447 @@
     </div>
   </div>
 
+  <!-- Groups Modals -->
+
+  <!-- Group Details Modal -->
+  <div class="ui large modal" id="modalGroupDetails">
+    <i class="close icon"></i>
+    <div class="header">
+      <i class="users icon"></i>
+      <span id="groupDetailsTitle">Group Details</span>
+    </div>
+    <div class="content">
+      <div class="ui stackable grid">
+        <div class="sixteen wide column">
+          <div class="ui relaxed list">
+            <div class="item">
+              <div class="header">Group Name</div>
+              <div id="groupDetailsName">-</div>
+            </div>
+            <div class="item">
+              <div class="header">Description</div>
+              <div id="groupDetailsDescription">-</div>
+            </div>
+            <div class="item">
+              <div class="header">Participants</div>
+              <div id="groupDetailsParticipants">-</div>
+            </div>
+            <div class="item">
+              <div class="header">Created</div>
+              <div id="groupDetailsCreated">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Participants List -->
+      <div class="ui divider"></div>
+      <h4 class="ui header">
+        <i class="users icon"></i>
+        Participants
+      </h4>
+      <div class="ui relaxed divided list" id="groupParticipantsList">
+        <!-- Participants will be populated here -->
+      </div>
+    </div>
+    <div class="actions">
+      <div class="ui stackable grid">
+        <!-- Basic Actions -->
+        <div class="eight wide column">
+          <h5 class="ui header">Basic Actions</h5>
+          <div class="ui fluid buttons">
+            <button class="ui blue button" id="editGroupInfoBtn">
+              <i class="edit icon"></i> Edit Info
+        </button>
+            <button class="ui green button" id="manageParticipantsBtn">
+              <i class="users icon"></i> Participants
+        </button>
+          </div>
+        </div>
+        
+        <!-- Admin Actions -->
+        <div class="eight wide column" id="adminActionsSection" style="display: none;">
+          <h5 class="ui header">Admin Actions</h5>
+          <div class="ui fluid buttons">
+            <button class="ui orange button" id="groupSettingsBtn">
+          <i class="settings icon"></i> Settings
+        </button>
+            <button class="ui purple button" id="groupInviteLinkBtn">
+              <i class="linkify icon"></i> Invite Link
+            </button>
+          </div>
+        </div>
+        
+        <!-- Danger Zone -->
+        <div class="sixteen wide column">
+          <div class="ui divider"></div>
+          <h5 class="ui red header">Danger Zone</h5>
+          <button class="ui red button fluid" id="leaveGroupBtn">
+          <i class="sign out icon"></i> Leave Group
+        </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Group Modal -->
+  <div class="ui modal" id="modalCreateGroup">
+    <i class="close icon"></i>
+    <div class="header">
+      <i class="plus icon"></i>
+      Create New Group
+    </div>
+    <div class="content">
+      <form class="ui form" id="createGroupForm">
+        <div class="field">
+          <label>Group Name <span class="required">*</span></label>
+          <input type="text" name="groupName" placeholder="Enter group name" required maxlength="25">
+        </div>
+        <div class="field">
+          <label>Participants <span class="required">*</span></label>
+          <div class="ui info message" id="contactsStatus" style="display: none;">
+            <i class="info circle icon"></i>
+            <span id="contactsStatusText">Click "Load Contacts" to populate the participants list.</span>
+          </div>
+          <div class="ui fluid action input" style="margin-bottom: 10px;">
+            <button type="button" class="ui blue button" id="loadContactsBtn">
+              <i class="users icon"></i> Load Contacts
+            </button>
+          </div>
+          <div class="ui fluid multiple search selection dropdown" id="participantsDropdown">
+            <input type="hidden" name="participants">
+            <i class="dropdown icon"></i>
+            <div class="default text">Select participants</div>
+            <div class="menu">
+              <!-- Contacts will be populated here -->
+            </div>
+          </div>
+        </div>
+        <div class="ui error message"></div>
+      </form>
+    </div>
+    <div class="actions">
+      <div class="ui black deny button">Cancel</div>
+      <div class="ui positive right labeled icon button" id="createGroupSubmit">
+        Create Group
+        <i class="checkmark icon"></i>
+      </div>
+    </div>
+  </div>
+
+  <!-- Join Group Modal -->
+  <div class="ui modal" id="modalJoinGroup">
+    <i class="close icon"></i>
+    <div class="header">
+      <i class="add user icon"></i>
+      Join Group
+    </div>
+    <div class="content">
+      <form class="ui form" id="joinGroupForm">
+        <div class="field">
+          <label>Invite Link or Code</label>
+          <input type="text" name="inviteCode" placeholder="Paste invite link or enter code" required>
+          <div class="ui description">
+            Paste the full WhatsApp invite link or just the invite code
+          </div>
+        </div>
+        <div class="ui info message hidden" id="groupPreviewContainer">
+          <div class="header">Group Preview</div>
+          <div id="groupPreviewContent">
+            <!-- Group preview will be shown here -->
+          </div>
+        </div>
+        <div class="ui error message"></div>
+      </form>
+    </div>
+    <div class="actions">
+      <div class="ui black deny button">Cancel</div>
+      <div class="ui button" id="previewGroupBtn">
+        <i class="eye icon"></i> Preview Group
+      </div>
+      <div class="ui positive right labeled icon button" id="joinGroupSubmit">
+        Join Group
+        <i class="checkmark icon"></i>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Group Modal -->
+  <div class="ui modal" id="modalEditGroup">
+    <i class="close icon"></i>
+    <div class="header">
+      <i class="edit icon"></i>
+      Edit Group
+    </div>
+    <div class="content">
+      <form class="ui form" id="editGroupForm">
+        <div class="field">
+          <label>Group Name</label>
+          <input type="text" name="editGroupName" placeholder="Enter group name" maxlength="25">
+        </div>
+        <div class="field">
+          <label>Group Description</label>
+          <textarea name="editGroupDescription" placeholder="Enter group description" rows="3"></textarea>
+        </div>
+        <div class="field">
+          <label>Group Photo</label>
+          <div class="ui segment">
+            <div class="ui stackable grid">
+              <div class="four wide column center aligned">
+                <img id="currentGroupPhoto" class="ui small circular image" src="" alt="Current Photo" style="display: none;">
+                <div id="noCurrentPhoto" class="ui icon header">
+                  <i class="users icon"></i>
+                  No Photo
+                </div>
+              </div>
+              <div class="twelve wide column">
+                <div class="ui buttons">
+                  <button type="button" class="ui button" id="changePhotoBtn">
+                    <i class="camera icon"></i> Change Photo
+                  </button>
+                  <button type="button" class="ui negative button" id="removePhotoBtn">
+                    <i class="trash icon"></i> Remove Photo
+                  </button>
+                </div>
+                <input type="file" id="editGroupPhotoInput" accept="image/*" style="display: none;">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="ui error message"></div>
+      </form>
+    </div>
+    <div class="actions">
+      <div class="ui black deny button">Cancel</div>
+      <div class="ui positive right labeled icon button" id="saveGroupChanges">
+        Save Changes
+        <i class="checkmark icon"></i>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group Settings Modal -->
+  <div class="ui modal" id="modalGroupSettings">
+    <i class="close icon"></i>
+    <div class="header">
+      <i class="settings icon"></i>
+      Group Settings
+    </div>
+    <div class="content">
+      <div class="ui form">
+        <h4 class="ui dividing header">Message Permissions</h4>
+        <div class="field">
+          <div class="ui toggle checkbox" id="announceOnlyToggle">
+            <input type="checkbox">
+            <label>Only admins can send messages</label>
+          </div>
+          <div class="ui description">
+            When enabled, only group admins can send messages to this group.
+          </div>
+        </div>
+        
+        <h4 class="ui dividing header">Group Information</h4>
+        <div class="field">
+          <div class="ui toggle checkbox" id="editInfoToggle">
+            <input type="checkbox">
+            <label>Only admins can edit group info</label>
+          </div>
+          <div class="ui description">
+            When enabled, only group admins can edit group name, description, and photo.
+          </div>
+        </div>
+        
+        <h4 class="ui dividing header">Disappearing Messages</h4>
+        <div class="field">
+          <label>Message Timer</label>
+          <select class="ui dropdown" id="disappearingTimerSelect">
+            <option value="off">Off</option>
+            <option value="24h">24 hours</option>
+            <option value="7d">7 days</option>
+            <option value="90d">90 days</option>
+          </select>
+          <div class="ui description">
+            Messages will automatically disappear after the selected time.
+          </div>
+        </div>
+
+        <h4 class="ui dividing header">Group Photo</h4>
+        <div class="field">
+          <div class="ui segment">
+            <div class="ui stackable grid">
+              <div class="four wide column center aligned">
+                <div id="currentGroupPhotoContainer">
+                  <div class="ui icon header">
+                    <i class="users icon"></i>
+                    No Photo
+                  </div>
+                </div>
+              </div>
+              <div class="twelve wide column">
+                <div class="ui buttons">
+                  <button type="button" class="ui button" id="changeGroupPhotoBtn">
+                    <i class="camera icon"></i> Change Photo
+            </button>
+                  <button type="button" class="ui negative button" id="removeGroupPhotoBtn">
+                    <i class="trash icon"></i> Remove Photo
+            </button>
+                </div>
+                <input type="file" id="groupPhotoInput" accept="image/*" style="display: none;">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="actions">
+      <div class="ui black deny button">Close</div>
+      <div class="ui positive right labeled icon button" id="saveGroupSettingsBtn">
+        Save Settings
+        <i class="checkmark icon"></i>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manage Participants Modal -->
+  <div class="ui large modal" id="modalManageParticipants">
+    <i class="close icon"></i>
+    <div class="header">
+      <i class="users icon"></i>
+      Manage Participants
+    </div>
+    <div class="content">
+      <div class="ui stackable grid">
+        <!-- Add Participants Section -->
+        <div class="eight wide column">
+          <h4 class="ui header">
+            <i class="plus icon"></i>
+            Add Participants
+          </h4>
+          <div class="ui form">
+            <div class="field">
+              <label>Load Contacts</label>
+              <button type="button" class="ui blue button fluid" id="loadContactsForParticipantsBtn">
+                <i class="users icon"></i> Load Contacts
+              </button>
+              <div class="ui info message" id="participantsContactsStatus" style="display: none;">
+                <span id="participantsContactsStatusText">Click "Load Contacts" to populate the list.</span>
+              </div>
+            </div>
+            <div class="field">
+              <label>Select Contacts to Add</label>
+              <div class="ui fluid multiple search selection dropdown" id="addParticipantsDropdown">
+                <input type="hidden" name="newParticipants">
+                <i class="dropdown icon"></i>
+                <div class="default text">Select contacts to add</div>
+                <div class="menu">
+                  <!-- Available contacts will be populated here -->
+                </div>
+              </div>
+            </div>
+            <button class="ui green button fluid" id="addParticipantsBtn">
+              <i class="plus icon"></i> Add Selected Participants
+            </button>
+          </div>
+        </div>
+        
+        <!-- Current Participants Section -->
+        <div class="eight wide column">
+          <h4 class="ui header">
+            <i class="users icon"></i>
+            Current Participants
+          </h4>
+          <div class="ui relaxed divided list" id="manageParticipantsList">
+            <!-- Current participants will be populated here -->
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="actions">
+      <div class="ui black deny button">Close</div>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div class="ui small modal" id="confirmationModal">
+    <div class="header" id="confirmationTitle">Confirm Action</div>
+    <div class="content">
+      <p id="confirmationMessage">Are you sure you want to perform this action?</p>
+    </div>
+    <div class="actions">
+      <div class="ui negative button">No</div>
+      <div class="ui positive right labeled icon button" id="confirmationYes">
+        Yes
+        <i class="checkmark icon"></i>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Group Info Modal -->
+  <div class="ui modal" id="modalEditGroupInfo">
+    <i class="close icon"></i>
+    <div class="header">
+      <i class="edit icon"></i>
+      Edit Group Information
+    </div>
+    <div class="content">
+      <form class="ui form" id="editGroupInfoForm">
+        <div class="field">
+          <label>Group Name</label>
+          <input type="text" name="groupName" id="editGroupNameInput" placeholder="Enter group name" maxlength="25" required>
+        </div>
+        <div class="field">
+          <label>Group Description</label>
+          <textarea name="groupDescription" id="editGroupDescriptionInput" placeholder="Enter group description" rows="3"></textarea>
+        </div>
+        <div class="ui error message"></div>
+      </form>
+    </div>
+    <div class="actions">
+      <div class="ui black deny button">Cancel</div>
+      <div class="ui positive right labeled icon button" id="saveGroupInfoBtn">
+        Save Changes
+        <i class="checkmark icon"></i>
+      </div>
+    </div>
+  </div>
+
+  <!-- Group Invite Link Modal -->
+  <div class="ui modal" id="modalGroupInviteLink">
+    <i class="close icon"></i>
+    <div class="header">
+      <i class="linkify icon"></i>
+      Group Invite Link
+    </div>
+    <div class="content">
+      <div class="ui segment">
+        <h4 class="ui header">Current Invite Link</h4>
+        <div class="ui action input fluid">
+          <input type="text" id="currentInviteLink" readonly placeholder="Loading...">
+          <button type="button" class="ui icon button" id="copyInviteLinkBtn">
+            <i class="copy icon"></i>
+          </button>
+        </div>
+        <div class="ui description">
+          Share this link to invite people to join the group.
+        </div>
+      </div>
+      
+      <div class="ui warning message">
+        <div class="header">Reset Invite Link</div>
+        <p>Resetting the invite link will invalidate the current link and create a new one. Anyone with the old link will no longer be able to join.</p>
+        <button class="ui orange button" id="resetInviteLinkBtn">
+          <i class="refresh icon"></i> Reset Link
+        </button>
+      </div>
+    </div>
+    <div class="actions">
+      <div class="ui button">Close</div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/fomantic-ui@2.9.4/dist/semantic.min.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/groups.js"></script>
 </body>
 </html>

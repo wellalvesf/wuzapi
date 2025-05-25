@@ -851,7 +851,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"My New Group\",\n  \"participants\": [\"5491155553934\", \"5491155553935\"]\n}"
+              "raw": "{\n  \"Name\": \"My New Group\",\n  \"Participants\": [\"5491155553934\", \"5491155553935\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/group/create",
@@ -872,7 +872,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"groupjid\": \"120362023605733675@g.us\",\n  \"locked\": true\n}"
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Locked\": true\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/group/locked",
@@ -893,7 +893,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"groupjid\": \"120362023605733675@g.us\",\n  \"duration\": \"24h\"\n}"
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Duration\": \"24h\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/group/ephemeral",
@@ -914,7 +914,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"groupjid\": \"120362023605733675@g.us\"\n}"
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/group/photo/remove",
@@ -1041,7 +1041,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Image\": \"data:image/jpeg;base64,/9j/\"\n}"
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Image\": \"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD...\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/group/photo",
@@ -1146,14 +1146,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Action\": \"add\",\n  \"Participants\": [\"5491155553934@s.whatsapp.net\", \"5491155553935@s.whatsapp.net\"]\n}"
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Action\": \"add\",\n  \"Phone\": [\"5491155553934@s.whatsapp.net\", \"5491155553935@s.whatsapp.net\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/group/updateparticipants",
               "host": ["{{baseUrl}}"],
               "path": ["group", "updateparticipants"]
             },
-            "description": "Add or remove participants from a group. Action can be 'add' or 'remove'."
+            "description": "Add, remove, promote or demote participants from a group. Action can be 'add', 'remove', 'promote','demote'."
           },
           "response": [ ]
         }

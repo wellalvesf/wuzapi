@@ -873,15 +873,23 @@ Response:
 
 ## Changes group photo
 
-Allows you to change a group photo/image
+Allows you to change a group photo/image. **WhatsApp only accepts JPEG format for group photos.**
 
 endpoint: _/group/photo_
 
 method: **POST**
 
+**Parameters:**
+- `GroupJID`: The JID of the group
+- `Image`: Base64 encoded JPEG image data with data URL format (must be "data:image/jpeg;base64,...")
+
+**Important Notes:**
+- Only JPEG format is supported (WhatsApp requirement)
+- Image will be automatically resized if too large
+- Transparent images will be converted to JPEG with white background
 
 ```
-curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"GroupJID":"120362023605733675@g.us","Image":"data:image/jpeg;base64,AABB00DD-"}' http://localhost:8080/group/photo 
+curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"GroupJID":"120362023605733675@g.us","Image":"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD..."}' http://localhost:8080/group/photo 
 ```
 
 Response:

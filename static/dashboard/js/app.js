@@ -317,6 +317,11 @@ function handleRegularLogin(token,notifications=false) {
     if(status.success==true) {
       console.log(status.data);
       setLocalStorageItem('currentInstance', status.data.id, 6);
+      // Save current user JID for groups functionality
+      if(status.data.jid) {
+        setLocalStorageItem('currentUserJID', status.data.jid, 6);
+        window.currentUserJID = status.data.jid;
+      }
       populateInstances([status.data]);
       showRegularUser();
       $('.logingrid').addClass('hidden');
@@ -338,6 +343,11 @@ function updateUser() {
   // retrieves one instance status at regular interval
   status().then((result)=> {
     if(result.success==true) {
+      // Save current user JID for groups functionality
+      if(result.data.jid) {
+        setLocalStorageItem('currentUserJID', result.data.jid, 6);
+        window.currentUserJID = result.data.jid;
+      }
       populateInstances([result.data]);
     } 
   });

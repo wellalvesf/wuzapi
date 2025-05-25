@@ -2,11 +2,14 @@ openapi: 3.0.0
 info:
   title: WUZAPI
   description: "WUZAPI implements a multi user and multi device REST API for WhatsApp.\n\n<h2>Authentication</h2><ul><li>Standard Endpoints: Include the token header with a valid user token (matches tokens stored in the users database table).</li><li>Admin Endpoints: Use the Authorization header with the admin token (set in .env as WUZAPI_ADMIN_TOKEN).</li></ul><h2>Admin Setup:</h2>You can manage users and do some tests by using the builtin dashboard [here](/dashboard).<h3>Add a Sample User via API</h3>Run this command to create a test user:<pre><code>curl -X POST http://localhost:8080/admin/users \\ \n-H \"Authorization: $WUZAPI_ADMIN_TOKEN\" \\ \n-H \"Content-Type: application/json\" \\ \n-d '{\"name\": \"John\", \"token\": \"Z1234ABCCXD\"}' </code> </pre>\n\n<h2>Webhook Configuration</h2>To receive WhatsApp messages:<ul><li>Host your own server (to process incoming messages).</li><li>Set its URL as the webhook via the [webhook](#Webhook) API call.</li></ul><h2>Phone number format:</h2><ul><li>Required: Country code (e.g. <b>5491155553934</b> for Argentina</li><li>Do not prefix with a plus sign (+), as natively whatsapp requires no plus sign prefix.</li></ul>"
-  version: '3.0'
+  version: '3.0.0'
   termsOfService: ''
    
 schemes:
   - http
+servers:
+  - url: http://localhost:8080
+    description: Local development server
 
 paths:
   /admin/users:
@@ -224,7 +227,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/Connect'
+              $ref: '#/definitions/Connect'
 
       responses:
         200:
@@ -292,7 +295,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/Pairphone'
+              $ref: '#/definitions/Pairphone'
       responses:
         200:
           description: Response
@@ -372,7 +375,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/Checkuser'
+              $ref: '#/definitions/Checkuser'
 
 
       responses:
@@ -395,7 +398,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/Checkuser'
+              $ref: '#/definitions/Checkuser'
 
 
       responses:
@@ -418,7 +421,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/UserPresence'
+              $ref: '#/definitions/UserPresence'
 
       responses:
         200:
@@ -446,7 +449,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/Checkavatar'
+              $ref: '#/definitions/Checkavatar'
 
 
       responses:
@@ -484,7 +487,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/DeleteMessage'
+              $ref: '#/definitions/DeleteMessage'
 
       responses:
         200:
@@ -506,7 +509,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/Markread'
+              $ref: '#/definitions/Markread'
 
       responses:
         200:
@@ -528,7 +531,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/ReactionText'
+              $ref: '#/definitions/ReactionText'
 
       responses:
         200:
@@ -550,7 +553,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/MessageText'
+              $ref: '#/definitions/MessageText'
 
       responses:
         200:
@@ -639,7 +642,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/MessageImage'
+              $ref: '#/definitions/MessageImage'
 
       responses:
         200:
@@ -661,7 +664,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/MessageAudio'
+              $ref: '#/definitions/MessageAudio'
 
       responses:
         200:
@@ -683,7 +686,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/MessageDocument'
+              $ref: '#/definitions/MessageDocument'
 
       responses:
         200:
@@ -692,7 +695,7 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Details":"Sent","Id":"90B2F8B13FAC8A9CF6B06E99C7834DC5","Timestamp":"2022-04-20T12:49:08-03:00"},"success":true}
-   /chat/send/template:
+  /chat/send/template:
     post:
       tags:
         - Chat 
@@ -705,7 +708,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/MessageTemplate'
+              $ref: '#/definitions/MessageTemplate'
 
       responses:
         200:
@@ -727,7 +730,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/MessageVideo'
+              $ref: '#/definitions/MessageVideo'
 
       responses:
         200:
@@ -749,7 +752,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/MessageSticker'
+              $ref: '#/definitions/MessageSticker'
 
       responses:
         200:
@@ -758,7 +761,7 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Details":"Sent","Id":"90B2F8B13FAC8A9CF6B06E99C7834DC5","Timestamp":"2022-04-20T12:49:08-03:00"},"success":true}
-   /chat/send/location:
+  /chat/send/location:
     post:
       tags:
         - Chat 
@@ -771,7 +774,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/MessageLocation'
+              $ref: '#/definitions/MessageLocation'
 
       responses:
         200:
@@ -780,7 +783,7 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Details":"Sent","Id":"90B2F8B13FAC8A9CF6B06E99C7834DC5","Timestamp":"2022-04-20T12:49:08-03:00"},"success":true}
-   /chat/send/contact:
+  /chat/send/contact:
     post:
       tags:
         - Chat 
@@ -793,7 +796,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/MessageContact'
+              $ref: '#/definitions/MessageContact'
 
       responses:
         200:
@@ -815,7 +818,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/MessagePoll'
+              $ref: '#/definitions/MessagePoll'
       responses:
         200:
           description: Response
@@ -836,7 +839,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/DownloadImage'
+              $ref: '#/definitions/DownloadImage'
 
       responses:
         200:
@@ -858,7 +861,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/DownloadImage'
+              $ref: '#/definitions/DownloadImage'
 
       responses:
         200:
@@ -880,7 +883,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/DownloadImage'
+              $ref: '#/definitions/DownloadImage'
 
       responses:
         200:
@@ -902,7 +905,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/ChatPresence'
+              $ref: '#/definitions/ChatPresence'
 
       responses:
         200:
@@ -975,6 +978,26 @@ paths:
               schema:
                 example: { "code": 200, "data": { "Details": "Disappearing timer set successfully" }, "success": true }
   /group/photo/remove:
+    post:
+      tags:
+        - Group
+      summary: Remove group photo
+      description: Removes the current photo/image from the specified WhatsApp group.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/RemoveGroupPhoto'
+      responses:
+        200:
+          description: Success
+          content:
+            application/json:
+              schema:
+                example: { "code": 200, "data": { "Details": "Group photo removed successfully" }, "success": true }
   /group/list:
     get:
       tags:
@@ -1054,7 +1077,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#definitions/GroupPhoto'
+              $ref: '#/definitions/GroupPhoto'
  
       responses:
         200:
@@ -1193,7 +1216,7 @@ paths:
     post:
       tags:
         - Group
-      summary: Add or remove participants from a group
+      summary: Add, remove, promote or demote participants from a group
       description: Adds or removes participants from the specified WhatsApp group.
       security:
         - ApiKeyAuth: []
@@ -1211,26 +1234,6 @@ paths:
               schema:
                 example: { "code": 200, "data": { "Details": "Participants updated successfully" }, "success": true }
 
-    post:
-      tags:
-        - Group
-      summary: Remove group photo
-      description: Removes the current photo/image from the specified WhatsApp group.
-      security:
-        - ApiKeyAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/definitions/RemoveGroupPhoto'
-      responses:
-        200:
-          description: Success
-          content:
-            application/json:
-              schema:
-                example: { "code": 200, "data": { "Details": "Group photo removed successfully" }, "success": true }
 definitions:
   User:
     type: object
@@ -1269,6 +1272,7 @@ definitions:
         example: "120362023605733675@g.us"
       Image:
         type: string
+        description: "Base64 encoded image data with data URL format. Supported format: JPEG!"
         example: "data:image/jpeg;base64,Akd9300..."
   GroupInfo:
     type: object
@@ -1763,9 +1767,9 @@ definitions:
   GroupLeave:
     type: object
     required:
-      - groupJID
+      - GroupJID
     properties:
-      groupJID:
+      GroupJID:
         type: string
         description: The JID of the group to leave (e.g., 120363312246943103@g.us)
         example: 120363312246943103@g.us
@@ -1773,14 +1777,14 @@ definitions:
   GroupName:
     type: object
     required:
-      - groupJID
-      - name
+      - GroupJID
+      - Name
     properties:
-      groupJID:
+      GroupJID:
         type: string
         description: The JID of the group to rename
         example: 120363312246943103@g.us
-      name:
+      Name:
         type: string
         description: The new name for the group
         example: My New Group Name
@@ -1788,14 +1792,14 @@ definitions:
   GroupTopic:
     type: object
     required:
-      - groupJID
-      - topic
+      - GroupJID
+      - Topic
     properties:
-      groupJID:
+      GroupJID:
         type: string
         description: The JID of the group to set the topic for
         example: 120363312246943103@g.us
-      topic:
+      Topic:
         type: string
         description: The new topic/description for the group
         example: Welcome to our project group!
@@ -1803,14 +1807,14 @@ definitions:
   GroupAnnounce:
     type: object
     required:
-      - groupJID
-      - announce
+      - GroupJID
+      - Announce
     properties:
-      groupJID:
+      GroupJID:
         type: string
         description: The JID of the group to set announce mode
         example: 120363312246943103@g.us
-      announce:
+      Announce:
         type: boolean
         description: Whether to enable (true) or disable (false) announce mode
         example: true
@@ -1818,9 +1822,9 @@ definitions:
   GroupJoin:
     type: object
     required:
-      - inviteCode
+      - Code
     properties:
-      inviteCode:
+      Code:
         type: string
         description: The invite code or link to join the group
         example: HffXhYmzzyJGec61oqMXiz
@@ -1828,9 +1832,9 @@ definitions:
   GroupInviteInfo:
     type: object
     required:
-      - inviteCode
+      - Code
     properties:
-      inviteCode:
+      Code:
         type: string
         description: The group invite code to get information for
         example: HffXhYmzzyJGec61oqMXiz
@@ -1838,37 +1842,37 @@ definitions:
   UpdateGroupParticipants:
     type: object
     required:
-      - groupJID
-      - action
-      - participants
+      - GroupJID
+      - Action
+      - Phone
     properties:
-      groupJID:
+      GroupJID:
         type: string
         description: The JID of the group
         example: 120363312246943103@g.us
-      action:
+      Action:
         type: string
-        description: Action to perform ("add" to add participants, "remove" to remove participants)
-        enum: [add, remove]
+        description: Action to perform ("add" to add participants, "remove" to remove participants, "promote" to promote participants, "demote" to demote participants.)
+        enum: [add, remove, promete, demote]
         example: add
-      participants:
+      Phone:
         type: array
         items:
           type: string
-          description: List of participant JIDs (e.g., 5491112345678@s.whatsapp.net)
-        example: [ "5491112345678@s.whatsapp.net", "5491123456789@s.whatsapp.net" ]
+          description: List of participant JIDs (e.g., 5491112345678@s.whatsapp.net or 5491112345678)
+        example: [ "5491112345678", "5491123456789@s.whatsapp.net" ]
 
   CreateGroup:
     type: object
     required:
-      - name
-      - participants
+      - Name
+      - Participants
     properties:
-      name:
+      Name:
         type: string
         description: The name for the new group
         example: "My New Group"
-      participants:
+      Participants:
         type: array
         items:
           type: string
@@ -1878,14 +1882,14 @@ definitions:
   GroupLocked:
     type: object
     required:
-      - groupjid
-      - locked
+      - GroupJID
+      - Locked
     properties:
-      groupjid:
+      GroupJID:
         type: string
         description: The JID of the group to configure
         example: "120363312246943103@g.us"
-      locked:
+      Locked:
         type: boolean
         description: Whether to lock the group (true) or unlock it (false). When locked, only admins can modify group info.
         example: true
@@ -1893,14 +1897,14 @@ definitions:
   GroupEphemeral:
     type: object
     required:
-      - groupjid
-      - duration
+      - GroupJID
+      - Duration
     properties:
-      groupjid:
+      GroupJID:
         type: string
         description: The JID of the group to configure ephemeral messages
         example: "120363312246943103@g.us"
-      duration:
+      Duration:
         type: string
         description: Duration for disappearing messages. Use "24h" for 24 hours, "7d" for 7 days, "90d" for 90 days, or "off" to disable.
         enum: ["24h", "7d", "90d", "off"]
@@ -1909,9 +1913,9 @@ definitions:
   RemoveGroupPhoto:
     type: object
     required:
-      - groupjid
+      - GroupJID
     properties:
-      groupjid:
+      GroupJID:
         type: string
         description: The JID of the group to remove the photo from
         example: "120363312246943103@g.us"

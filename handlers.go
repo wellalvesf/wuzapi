@@ -3667,7 +3667,8 @@ func (s *server) SetGroupPhoto() http.HandlerFunc {
 
 		var filedata []byte
 
-		if t.Image[0:13] == "data:image/jp" {
+		// Check if the image data starts with a valid data URL format
+		if len(t.Image) > 10 && t.Image[0:10] == "data:image" {
 			var dataURL, err = dataurl.DecodeString(t.Image)
 			if err != nil {
 				s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode base64 encoded data from payload"))
@@ -3676,7 +3677,19 @@ func (s *server) SetGroupPhoto() http.HandlerFunc {
 				filedata = dataURL.Data
 			}
 		} else {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Image data should start with \"data:image/jpeg;base64,\""))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Image data should start with \"data:image/\" (supported formats: jpeg, png, gif, webp)"))
+			return
+		}
+
+		// Validate that we have image data
+		if len(filedata) == 0 {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("No image data found in payload"))
+			return
+		}
+
+		// Validate JPEG format (WhatsApp requires JPEG)
+		if len(filedata) < 3 || filedata[0] != 0xFF || filedata[1] != 0xD8 || filedata[2] != 0xFF {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("Image must be in JPEG format. WhatsApp only accepts JPEG images for group photos"))
 			return
 		}
 
@@ -4474,4 +4487,3 @@ func (s *server) SetProxy() http.HandlerFunc {
 		}
 	}
 }
-
