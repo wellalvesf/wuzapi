@@ -45,6 +45,11 @@ var migrations = []Migration{
 		Name:  "change_id_to_string",
 		UpSQL: changeIDToStringSQL,
 	},
+	{
+		ID:    4,
+		Name:  "add_s3_support",
+		UpSQL: addS3SupportSQL,
+	},
 }
 
 const changeIDToStringSQL = `
@@ -89,6 +94,53 @@ BEGIN
 END $$;
 
 -- SQLite version (handled in code)
+`
+
+const addS3SupportSQL = `
+-- PostgreSQL version
+DO $$
+BEGIN
+    -- Add S3 configuration columns if they don't exist
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 's3_enabled') THEN
+        ALTER TABLE users ADD COLUMN s3_enabled BOOLEAN DEFAULT FALSE;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 's3_endpoint') THEN
+        ALTER TABLE users ADD COLUMN s3_endpoint TEXT DEFAULT '';
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 's3_region') THEN
+        ALTER TABLE users ADD COLUMN s3_region TEXT DEFAULT '';
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 's3_bucket') THEN
+        ALTER TABLE users ADD COLUMN s3_bucket TEXT DEFAULT '';
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 's3_access_key') THEN
+        ALTER TABLE users ADD COLUMN s3_access_key TEXT DEFAULT '';
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 's3_secret_key') THEN
+        ALTER TABLE users ADD COLUMN s3_secret_key TEXT DEFAULT '';
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 's3_path_style') THEN
+        ALTER TABLE users ADD COLUMN s3_path_style BOOLEAN DEFAULT TRUE;
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 's3_public_url') THEN
+        ALTER TABLE users ADD COLUMN s3_public_url TEXT DEFAULT '';
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'media_delivery') THEN
+        ALTER TABLE users ADD COLUMN media_delivery TEXT DEFAULT 'base64';
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 's3_retention_days') THEN
+        ALTER TABLE users ADD COLUMN s3_retention_days INTEGER DEFAULT 30;
+    END IF;
+END $$;
 `
 
 // GenerateRandomID creates a random string ID
@@ -225,6 +277,40 @@ func applyMigration(db *sqlx.DB, migration Migration) error {
 	} else if migration.ID == 3 {
 		if db.DriverName() == "sqlite" {
 			err = migrateSQLiteIDToString(tx)
+		} else {
+			_, err = tx.Exec(migration.UpSQL)
+		}
+	} else if migration.ID == 4 {
+		if db.DriverName() == "sqlite" {
+			// Handle S3 columns for SQLite
+			err = addColumnIfNotExistsSQLite(tx, "users", "s3_enabled", "BOOLEAN DEFAULT 0")
+			if err == nil {
+				err = addColumnIfNotExistsSQLite(tx, "users", "s3_endpoint", "TEXT DEFAULT ''")
+			}
+			if err == nil {
+				err = addColumnIfNotExistsSQLite(tx, "users", "s3_region", "TEXT DEFAULT ''")
+			}
+			if err == nil {
+				err = addColumnIfNotExistsSQLite(tx, "users", "s3_bucket", "TEXT DEFAULT ''")
+			}
+			if err == nil {
+				err = addColumnIfNotExistsSQLite(tx, "users", "s3_access_key", "TEXT DEFAULT ''")
+			}
+			if err == nil {
+				err = addColumnIfNotExistsSQLite(tx, "users", "s3_secret_key", "TEXT DEFAULT ''")
+			}
+			if err == nil {
+				err = addColumnIfNotExistsSQLite(tx, "users", "s3_path_style", "BOOLEAN DEFAULT 1")
+			}
+			if err == nil {
+				err = addColumnIfNotExistsSQLite(tx, "users", "s3_public_url", "TEXT DEFAULT ''")
+			}
+			if err == nil {
+				err = addColumnIfNotExistsSQLite(tx, "users", "media_delivery", "TEXT DEFAULT 'base64'")
+			}
+			if err == nil {
+				err = addColumnIfNotExistsSQLite(tx, "users", "s3_retention_days", "INTEGER DEFAULT 30")
+			}
 		} else {
 			_, err = tx.Exec(migration.UpSQL)
 		}

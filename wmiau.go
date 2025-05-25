@@ -96,6 +96,53 @@ func (s *server) connectOnStartup() {
 			log.Info().Str("events", eventstring).Str("jid", jid).Msg("Attempt to connect")
 			killchannel[txtid] = make(chan bool)
 			go s.startClient(txtid, jid, token, subscribedEvents)
+
+			// Initialize S3 client if configured
+			go func(userID string) {
+				var s3Config struct {
+					Enabled       bool   `db:"s3_enabled"`
+					Endpoint      string `db:"s3_endpoint"`
+					Region        string `db:"s3_region"`
+					Bucket        string `db:"s3_bucket"`
+					AccessKey     string `db:"s3_access_key"`
+					SecretKey     string `db:"s3_secret_key"`
+					PathStyle     bool   `db:"s3_path_style"`
+					PublicURL     string `db:"s3_public_url"`
+					RetentionDays int    `db:"s3_retention_days"`
+				}
+
+				err := s.db.Get(&s3Config, `
+					SELECT s3_enabled, s3_endpoint, s3_region, s3_bucket, 
+						   s3_access_key, s3_secret_key, s3_path_style, 
+						   s3_public_url, s3_retention_days
+					FROM users WHERE id = $1`, userID)
+
+				if err != nil {
+					log.Error().Err(err).Str("userID", userID).Msg("Failed to get S3 config")
+					return
+				}
+
+				if s3Config.Enabled {
+					config := &S3Config{
+						Enabled:       s3Config.Enabled,
+						Endpoint:      s3Config.Endpoint,
+						Region:        s3Config.Region,
+						Bucket:        s3Config.Bucket,
+						AccessKey:     s3Config.AccessKey,
+						SecretKey:     s3Config.SecretKey,
+						PathStyle:     s3Config.PathStyle,
+						PublicURL:     s3Config.PublicURL,
+						RetentionDays: s3Config.RetentionDays,
+					}
+
+					err = GetS3Manager().InitializeS3Client(userID, config)
+					if err != nil {
+						log.Error().Err(err).Str("userID", userID).Msg("Failed to initialize S3 client on startup")
+					} else {
+						log.Info().Str("userID", userID).Msg("S3 client initialized on startup")
+					}
+				}
+			}(txtid)
 		}
 	}
 	err = rows.Err()
@@ -424,20 +471,61 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Convert the image to base64
-				base64String, mimeType, err := fileToBase64(tmpPath)
+				// Check if S3 is enabled for this user
+				var s3Config struct {
+					Enabled       bool   `db:"s3_enabled"`
+					MediaDelivery string `db:"media_delivery"`
+				}
+				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to convert image to base64")
-					return
+					log.Error().Err(err).Msg("Failed to get S3 config")
+					s3Config.Enabled = false
+					s3Config.MediaDelivery = "base64"
 				}
 
-				// Add the base64 string and other details to the postmap
-				postmap["base64"] = base64String
-				postmap["mimeType"] = mimeType
-				postmap["fileName"] = filepath.Base(tmpPath)
+				// Process S3 upload if enabled
+				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+					// Get sender JID for inbox/outbox determination
+					isIncoming := evt.Info.IsFromMe == false
+					contactJID := evt.Info.Sender.String()
+					if evt.Info.IsGroup {
+						contactJID = evt.Info.Chat.String()
+					}
+
+					// Process S3 upload
+					s3Data, err := GetS3Manager().ProcessMediaForS3(
+						context.Background(),
+						txtid,
+						contactJID,
+						evt.Info.ID,
+						data,
+						img.GetMimetype(),
+						filepath.Base(tmpPath),
+						isIncoming,
+					)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to upload image to S3")
+					} else {
+						postmap["s3"] = s3Data
+					}
+				}
+
+				// Convert the image to base64 if needed
+				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+					base64String, mimeType, err := fileToBase64(tmpPath)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to convert image to base64")
+						return
+					}
+
+					// Add the base64 string and other details to the postmap
+					postmap["base64"] = base64String
+					postmap["mimeType"] = mimeType
+					postmap["fileName"] = filepath.Base(tmpPath)
+				}
 
 				// Log the successful conversion
-				log.Info().Str("path", tmpPath).Msg("Image converted to base64")
+				log.Info().Str("path", tmpPath).Msg("Image processed")
 
 				// Delete the temporary file
 				err = os.Remove(tmpPath)
@@ -483,20 +571,61 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Convert the audio to base64
-				base64String, mimeType, err := fileToBase64(tmpPath)
+				// Check if S3 is enabled for this user
+				var s3Config struct {
+					Enabled       bool   `db:"s3_enabled"`
+					MediaDelivery string `db:"media_delivery"`
+				}
+				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to convert audio to base64")
-					return
+					log.Error().Err(err).Msg("Failed to get S3 config")
+					s3Config.Enabled = false
+					s3Config.MediaDelivery = "base64"
 				}
 
-				// Add the base64 string and other details to the postmap
-				postmap["base64"] = base64String
-				postmap["mimeType"] = mimeType
-				postmap["fileName"] = filepath.Base(tmpPath)
+				// Process S3 upload if enabled
+				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+					// Get sender JID for inbox/outbox determination
+					isIncoming := evt.Info.IsFromMe == false
+					contactJID := evt.Info.Sender.String()
+					if evt.Info.IsGroup {
+						contactJID = evt.Info.Chat.String()
+					}
+
+					// Process S3 upload
+					s3Data, err := GetS3Manager().ProcessMediaForS3(
+						context.Background(),
+						txtid,
+						contactJID,
+						evt.Info.ID,
+						data,
+						audio.GetMimetype(),
+						filepath.Base(tmpPath),
+						isIncoming,
+					)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to upload audio to S3")
+					} else {
+						postmap["s3"] = s3Data
+					}
+				}
+
+				// Convert the audio to base64 if needed
+				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+					base64String, mimeType, err := fileToBase64(tmpPath)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to convert audio to base64")
+						return
+					}
+
+					// Add the base64 string and other details to the postmap
+					postmap["base64"] = base64String
+					postmap["mimeType"] = mimeType
+					postmap["fileName"] = filepath.Base(tmpPath)
+				}
 
 				// Log the successful conversion
-				log.Info().Str("path", tmpPath).Msg("Audio converted to base64")
+				log.Info().Str("path", tmpPath).Msg("Audio processed")
 
 				// Delete the temporary file
 				err = os.Remove(tmpPath)
@@ -547,20 +676,61 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Convert the document to base64
-				base64String, mimeType, err := fileToBase64(tmpPath)
+				// Check if S3 is enabled for this user
+				var s3Config struct {
+					Enabled       bool   `db:"s3_enabled"`
+					MediaDelivery string `db:"media_delivery"`
+				}
+				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to convert document to base64")
-					return
+					log.Error().Err(err).Msg("Failed to get S3 config")
+					s3Config.Enabled = false
+					s3Config.MediaDelivery = "base64"
 				}
 
-				// Add the base64 string and other details to the postmap
-				postmap["base64"] = base64String
-				postmap["mimeType"] = mimeType
-				postmap["fileName"] = filepath.Base(tmpPath)
+				// Process S3 upload if enabled
+				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+					// Get sender JID for inbox/outbox determination
+					isIncoming := evt.Info.IsFromMe == false
+					contactJID := evt.Info.Sender.String()
+					if evt.Info.IsGroup {
+						contactJID = evt.Info.Chat.String()
+					}
+
+					// Process S3 upload
+					s3Data, err := GetS3Manager().ProcessMediaForS3(
+						context.Background(),
+						txtid,
+						contactJID,
+						evt.Info.ID,
+						data,
+						document.GetMimetype(),
+						filepath.Base(tmpPath),
+						isIncoming,
+					)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to upload document to S3")
+					} else {
+						postmap["s3"] = s3Data
+					}
+				}
+
+				// Convert the document to base64 if needed
+				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+					base64String, mimeType, err := fileToBase64(tmpPath)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to convert document to base64")
+						return
+					}
+
+					// Add the base64 string and other details to the postmap
+					postmap["base64"] = base64String
+					postmap["mimeType"] = mimeType
+					postmap["fileName"] = filepath.Base(tmpPath)
+				}
 
 				// Log the successful conversion
-				log.Info().Str("path", tmpPath).Msg("Document converted to base64")
+				log.Info().Str("path", tmpPath).Msg("Document processed")
 
 				// Delete the temporary file
 				err = os.Remove(tmpPath)
@@ -600,20 +770,61 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Convert the video to base64
-				base64String, mimeType, err := fileToBase64(tmpPath)
+				// Check if S3 is enabled for this user
+				var s3Config struct {
+					Enabled       bool   `db:"s3_enabled"`
+					MediaDelivery string `db:"media_delivery"`
+				}
+				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to convert video to base64")
-					return
+					log.Error().Err(err).Msg("Failed to get S3 config")
+					s3Config.Enabled = false
+					s3Config.MediaDelivery = "base64"
 				}
 
-				// Add the base64 string and other details to the postmap
-				postmap["base64"] = base64String
-				postmap["mimeType"] = mimeType
-				postmap["fileName"] = filepath.Base(tmpPath)
+				// Process S3 upload if enabled
+				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+					// Get sender JID for inbox/outbox determination
+					isIncoming := evt.Info.IsFromMe == false
+					contactJID := evt.Info.Sender.String()
+					if evt.Info.IsGroup {
+						contactJID = evt.Info.Chat.String()
+					}
+
+					// Process S3 upload
+					s3Data, err := GetS3Manager().ProcessMediaForS3(
+						context.Background(),
+						txtid,
+						contactJID,
+						evt.Info.ID,
+						data,
+						video.GetMimetype(),
+						filepath.Base(tmpPath),
+						isIncoming,
+					)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to upload video to S3")
+					} else {
+						postmap["s3"] = s3Data
+					}
+				}
+
+				// Convert the video to base64 if needed
+				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+					base64String, mimeType, err := fileToBase64(tmpPath)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to convert video to base64")
+						return
+					}
+
+					// Add the base64 string and other details to the postmap
+					postmap["base64"] = base64String
+					postmap["mimeType"] = mimeType
+					postmap["fileName"] = filepath.Base(tmpPath)
+				}
 
 				// Log the successful conversion
-				log.Info().Str("path", tmpPath).Msg("Video converted to base64")
+				log.Info().Str("path", tmpPath).Msg("Video processed")
 
 				// Delete the temporary file
 				err = os.Remove(tmpPath)

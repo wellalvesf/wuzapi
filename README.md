@@ -105,6 +105,7 @@ DB_NAME=wuzapi
 DB_HOST=localhost
 DB_PORT=5432
 TZ=America/New_York
+WEBHOOK_FORMAT=json # or "form" for the default
 ```
 
 ### For SQLite
@@ -118,7 +119,6 @@ Key configuration options:
 * WUZAPI_ADMIN_TOKEN: Required - Authentication token for admin endpoints
 * TZ: Optional - Timezone for server operations (default: UTC)
 * PostgreSQL-specific options: Only required when using PostgreSQL backend
-
 
 ## Usage
 
@@ -302,5 +302,3 @@ distribution makes it eligible for export under the License Exception ENC
 Technology Software Unrestricted (TSU) exception (see the BIS Export
 Administration Regulations, Section 740.13) for both object code and source
 code.
-
-

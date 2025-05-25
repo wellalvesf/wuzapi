@@ -235,6 +235,90 @@
             "description": "Set proxy"
           },
           "response": []
+        },
+        {
+          "name": "Configure S3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "token",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"endpoint\": \"https://s3.amazonaws.com\",\n  \"region\": \"us-east-1\",\n  \"bucket\": \"my-whatsapp-media\",\n  \"access_key\": \"AKIAIOSFODNN7EXAMPLE\",\n  \"secret_key\": \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\",\n  \"path_style\": false,\n  \"public_url\": \"\",\n  \"media_delivery\": \"both\",\n  \"retention_days\": 30\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/session/s3/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["session", "s3", "config"]
+            },
+            "description": "Configure S3 storage settings"
+          },
+          "response": []
+        },
+        {
+          "name": "Get S3 Configuration",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "token",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/session/s3/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["session", "s3", "config"]
+            },
+            "description": "Get current S3 configuration"
+          },
+          "response": []
+        },
+        {
+          "name": "Test S3 Connection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "token",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/session/s3/test",
+              "host": ["{{baseUrl}}"],
+              "path": ["session", "s3", "test"]
+            },
+            "description": "Test S3 connection"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete S3 Configuration",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "token",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/session/s3/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["session", "s3", "config"]
+            },
+            "description": "Remove S3 configuration"
+          },
+          "response": []
         }
       ]
     },
@@ -276,7 +360,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"webhook\": \"https://example.net/webhook\",\n  \"events\": [\"Message\", \"ReadReceipt\"]\n}"
+              "raw": "{\n  \"WebhookURL\": \"https://example.net/webhook\",\n  \"Events\": [\"Message\", \"ReadReceipt\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/webhook",
@@ -322,7 +406,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"webhook\": \"https://example.net/webhook\",\n  \"events\": [\"Message\", \"ReadReceipt\"],\n  \"active\": true\n}"
+              "raw": "{\n  \"WebhookURL\": \"https://example.net/webhook\",\n  \"Events\": [\"Message\", \"ReadReceipt\"],\n  \"active\": true\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/webhook/update",
