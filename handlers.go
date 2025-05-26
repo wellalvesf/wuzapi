@@ -2179,7 +2179,7 @@ func (s *server) SendTemplate() http.HandlerFunc {
 		}
 
 		if t.Id == "" {
-			msgid = whatsmeow.GenerateMessageID()
+			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		} else {
 			msgid = t.Id
 		}
