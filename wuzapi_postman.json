@@ -44,7 +44,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"test_user\",\n  \"token\": \"user_token\"\n}"
+              "raw": "{\n  \"name\": \"test_user\",\n  \"token\": \"user_token\",\n  \"webhook\": \"https://webhook.site/1234567890\",\n  \"events\": \"All\",\n  \"proxyConfig\": {\n    \"enabled\": true,\n    \"proxyURL\": \"socks5://user:pass@host:port\"\n  }, \n  \"s3Config\": {\n    \"enabled\": true,\n    \"endpoint\": \"https://s3.amazonaws.com\",\n    \"region\": \"us-east-1\",\n    \"bucket\": \"my-bucket\",\n    \"accessKey\": \"AKIAIOSFODNN7EXAMPLE\",\n    \"secretKey\": \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\",\n    \"pathStyle\": false,\n    \"publicURL\": \"https://cdn.meusite.com\",\n    \"mediaDelivery\": \"both\",\n    \"retentionDays\": 30\n  }\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/admin/users",
@@ -235,6 +235,90 @@
             "description": "Set proxy"
           },
           "response": []
+        },
+        {
+          "name": "Configure S3",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "token",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"enabled\": true,\n  \"endpoint\": \"https://s3.amazonaws.com\",\n  \"region\": \"us-east-1\",\n  \"bucket\": \"my-whatsapp-media\",\n  \"access_key\": \"AKIAIOSFODNN7EXAMPLE\",\n  \"secret_key\": \"wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY\",\n  \"path_style\": false,\n  \"public_url\": \"\",\n  \"media_delivery\": \"both\",\n  \"retention_days\": 30\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/session/s3/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["session", "s3", "config"]
+            },
+            "description": "Configure S3 storage settings"
+          },
+          "response": []
+        },
+        {
+          "name": "Get S3 Configuration",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "token",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/session/s3/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["session", "s3", "config"]
+            },
+            "description": "Get current S3 configuration"
+          },
+          "response": []
+        },
+        {
+          "name": "Test S3 Connection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "token",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/session/s3/test",
+              "host": ["{{baseUrl}}"],
+              "path": ["session", "s3", "test"]
+            },
+            "description": "Test S3 connection"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete S3 Configuration",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "token",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/session/s3/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["session", "s3", "config"]
+            },
+            "description": "Remove S3 configuration"
+          },
+          "response": []
         }
       ]
     },
@@ -276,7 +360,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"webhook\": \"https://example.net/webhook\",\n  \"events\": [\"Message\", \"ReadReceipt\"]\n}"
+              "raw": "{\n  \"WebhookURL\": \"https://example.net/webhook\",\n  \"Events\": [\"Message\", \"ReadReceipt\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/webhook",
@@ -322,7 +406,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"webhook\": \"https://example.net/webhook\",\n  \"events\": [\"Message\", \"ReadReceipt\"],\n  \"active\": true\n}"
+              "raw": "{\n  \"WebhookURL\": \"https://example.net/webhook\",\n  \"Events\": [\"Message\", \"ReadReceipt\"],\n  \"active\": true\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/webhook/update",
@@ -842,6 +926,90 @@
       "name": "Group",
       "item": [
         {
+          "name": "Create Group",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Name\": \"My New Group\",\n  \"Participants\": [\"5491155553934\", \"5491155553935\"]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/create",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "create"]
+            },
+            "description": "Create a new WhatsApp group with specified name and participants"
+          },
+          "response": [ ]
+        },
+        {
+          "name": "Set Group Locked",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Locked\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/locked",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "locked"]
+            },
+            "description": "Configure group as locked (only admins can alter info) or unlocked"
+          },
+          "response": [ ]
+        },
+        {
+          "name": "Set Disappearing Timer",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Duration\": \"24h\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/ephemeral",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "ephemeral"]
+            },
+            "description": "Configure disappearing messages. Use '24h', '7d', '90d', or 'off'"
+          },
+          "response": [ ]
+        },
+        {
+          "name": "Remove Group Photo",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "token", "value": "{{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/group/photo/remove",
+              "host": ["{{baseUrl}}"],
+              "path": ["group", "photo", "remove"]
+            },
+            "description": "Remove the current photo from a WhatsApp group"
+          },
+          "response": [ ]
+        },
+        {
           "name": "List Groups",
           "request": {
             "method": "GET",
@@ -957,7 +1125,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Image\": \"data:image/jpeg;base64,/9j/\"\n}"
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Image\": \"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD...\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/group/photo",
@@ -1062,14 +1230,14 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Action\": \"add\",\n  \"Participants\": [\"5491155553934@s.whatsapp.net\", \"5491155553935@s.whatsapp.net\"]\n}"
+              "raw": "{\n  \"GroupJID\": \"120362023605733675@g.us\",\n  \"Action\": \"add\",\n  \"Phone\": [\"5491155553934@s.whatsapp.net\", \"5491155553935@s.whatsapp.net\"]\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/group/updateparticipants",
               "host": ["{{baseUrl}}"],
               "path": ["group", "updateparticipants"]
             },
-            "description": "Add or remove participants from a group. Action can be 'add' or 'remove'."
+            "description": "Add, remove, promote or demote participants from a group. Action can be 'add', 'remove', 'promote','demote'."
           },
           "response": [ ]
         }

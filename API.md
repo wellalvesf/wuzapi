@@ -64,6 +64,51 @@ Response:
   "id": 2
 }
 ```
+## User Creation with Optional Proxy and S3 Configuration
+
+You can create a user with optional proxy and S3 storage configuration. All fields are optional and backward compatible. If you do not provide these fields, the user will be created with default settings.
+
+### Example Payload
+
+```json
+{
+  "name": "test_user",
+  "token": "user_token",
+  "proxyConfig": {
+    "enabled": true,
+    "proxyURL": "socks5://user:pass@host:port"
+  },
+  "s3Config": {
+    "enabled": true,
+    "endpoint": "https://s3.amazonaws.com",
+    "region": "us-east-1",
+    "bucket": "my-bucket",
+    "accessKey": "AKIAIOSFODNN7EXAMPLE",
+    "secretKey": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+    "pathStyle": false,
+    "publicURL": "https://cdn.yoursite.com",
+    "mediaDelivery": "both",
+    "retentionDays": 30
+  }
+}
+```
+
+- `proxyConfig` (object, optional):
+  - `enabled` (boolean): Enable proxy for this user.
+  - `proxyURL` (string): Proxy URL (e.g., `socks5://user:pass@host:port`).
+- `s3Config` (object, optional):
+  - `enabled` (boolean): Enable S3 storage for this user.
+  - `endpoint` (string): S3 endpoint URL.
+  - `region` (string): S3 region.
+  - `bucket` (string): S3 bucket name.
+  - `accessKey` (string): S3 access key.
+  - `secretKey` (string): S3 secret key.
+  - `pathStyle` (boolean): Use path style addressing.
+  - `publicURL` (string): Public URL for accessing files.
+  - `mediaDelivery` (string): Media delivery type (`base64`, `s3`, or `both`).
+  - `retentionDays` (integer): Number of days to retain files.
+
+If you omit `proxyConfig` or `s3Config`, the user will be created without proxy or S3 integration, maintaining full backward compatibility.
 
 ## Delete User 
 
@@ -734,7 +779,7 @@ method: **GET**
 
 ```
 curl -s -X GET -H 'Token: 1234ABCD' http://localhost:8080/group/list 
-````
+```
 
 Response:
 ```json
@@ -873,15 +918,23 @@ Response:
 
 ## Changes group photo
 
-Allows you to change a group photo/image
+Allows you to change a group photo/image. **WhatsApp only accepts JPEG format for group photos.**
 
 endpoint: _/group/photo_
 
 method: **POST**
 
+**Parameters:**
+- `GroupJID`: The JID of the group
+- `Image`: Base64 encoded JPEG image data with data URL format (must be "data:image/jpeg;base64,...")
+
+**Important Notes:**
+- Only JPEG format is supported (WhatsApp requirement)
+- Image will be automatically resized if too large
+- Transparent images will be converted to JPEG with white background
 
 ```
-curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"GroupJID":"120362023605733675@g.us","Image":"data:image/jpeg;base64,AABB00DD-"}' http://localhost:8080/group/photo 
+curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"GroupJID":"120362023605733675@g.us","Image":"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD..."}' http://localhost:8080/group/photo 
 ```
 
 Response:
@@ -926,3 +979,442 @@ Response:
 }
 ```
 
+---
+
+## Create group
+
+Creates a new WhatsApp group with specified name and participants
+
+endpoint: _/group/create_
+
+method: **POST**
+
+```
+curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"name":"My New Group","participants":["5491155553934","5491155553935"]}' http://localhost:8080/group/create 
+```
+
+Response:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "JID": "120363123456789@g.us",
+    "Name": "My New Group",
+    "OwnerJID": "5491155554444@s.whatsapp.net",
+    "GroupCreated": "2023-12-01T10:00:00Z",
+    "Participants": [
+      {
+        "IsAdmin": true,
+        "IsSuperAdmin": true,
+        "JID": "5491155554444@s.whatsapp.net"
+      },
+      {
+        "IsAdmin": false,
+        "IsSuperAdmin": false,
+        "JID": "5491155553934@s.whatsapp.net"
+      }
+    ]
+  },
+  "success": true
+}
+```
+
+---
+
+## Set group locked status
+
+Configures whether only admins can modify group info (locked) or all participants can modify (unlocked)
+
+endpoint: _/group/locked_
+
+method: **POST**
+
+```
+curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"groupjid":"120362023605733675@g.us","locked":true}' http://localhost:8080/group/locked 
+```
+
+Response:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "Details": "Group locked setting updated successfully"
+  },
+  "success": true
+}
+```
+
+---
+
+## Set disappearing timer
+
+Configures ephemeral/disappearing messages for the group. Messages will automatically disappear after the specified duration.
+
+endpoint: _/group/ephemeral_
+
+method: **POST**
+
+```
+curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"groupjid":"120362023605733675@g.us","duration":"24h"}' http://localhost:8080/group/ephemeral 
+```
+
+Valid duration values:
+- `"24h"` - 24 hours
+- `"7d"` - 7 days  
+- `"90d"` - 90 days
+- `"off"` - Disable disappearing messages
+
+Response:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "Details": "Disappearing timer set successfully"
+  },
+  "success": true
+}
+```
+
+---
+
+## Remove group photo
+
+Removes the current photo/image from the specified WhatsApp group
+
+endpoint: _/group/photo/remove_
+
+method: **POST**
+
+```
+curl -s -X POST -H 'Token: 1234ABCD' -H 'Content-Type: application/json' -d '{"groupjid":"120362023605733675@g.us"}' http://localhost:8080/group/photo/remove 
+```
+
+Response:
+
+```json
+{
+  "code": 200,
+  "data": {
+    "Details": "Group photo removed successfully"
+  },
+  "success": true
+}
+```
+
+# S3 Storage Integration for WuzAPI
+
+## Overview
+
+WuzAPI now supports S3-compatible storage for media files, allowing you to store WhatsApp media (images, videos, audio, and documents) in cloud storage services instead of or in addition to base64 encoding in webhooks.
+
+## Features
+
+- **Multi-tenant Support**: Each user can configure their own S3 storage
+- **Multiple Providers**: Support for AWS S3, MinIO, Backblaze B2, and other S3-compatible services
+- **Flexible Delivery**: Choose between base64, S3 URL, or both in webhooks
+- **Automatic Organization**: Files are organized by user, contact, date, and media type
+- **Public Access**: Media files are stored with public-read permissions for easy preview
+- **Retention Management**: Configurable retention period with automatic expiration
+- **CDN Support**: Option to use custom public URLs for CDN integration
+
+## API Endpoints
+
+### Configure S3 Storage
+```
+POST /session/s3/config
+```
+
+Configure S3 storage settings for the authenticated user.
+
+**Request Body:**
+```json
+{
+  "enabled": true,
+  "endpoint": "https://s3.amazonaws.com",
+  "region": "us-east-1", 
+  "bucket": "my-whatsapp-media",
+  "access_key": "AKIAIOSFODNN7EXAMPLE",
+  "secret_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+  "path_style": false,
+  "public_url": "https://cdn.example.com",
+  "media_delivery": "both",
+  "retention_days": 30
+}
+```
+
+**Parameters:**
+- `enabled`: Enable/disable S3 storage
+- `endpoint`: S3 endpoint URL (leave empty for AWS S3)
+- `region`: S3 region
+- `bucket`: S3 bucket name
+- `access_key`: S3 access key ID
+- `secret_key`: S3 secret access key
+- `path_style`: Use path-style URLs (required for MinIO)
+- `public_url`: Custom public URL for accessing files (optional)
+- `media_delivery`: Delivery method - "base64", "s3", or "both"
+- `retention_days`: Days to retain files (0 for no expiration)
+
+### Get S3 Configuration
+```
+GET /session/s3/config
+```
+
+Retrieve current S3 configuration (access key is masked).
+
+**Response:**
+```json
+{
+  "code": 200,
+  "data": {
+    "enabled": true,
+    "endpoint": "https://s3.amazonaws.com",
+    "region": "us-east-1",
+    "bucket": "my-whatsapp-media",
+    "access_key": "***",
+    "path_style": false,
+    "public_url": "",
+    "media_delivery": "both",
+    "retention_days": 30
+  },
+  "success": true
+}
+```
+
+### Test S3 Connection
+```
+POST /session/s3/test
+```
+
+Test S3 connection with current configuration.
+
+**Response:**
+```json
+{
+  "code": 200,
+  "data": {
+    "Details": "S3 connection test successful",
+    "Bucket": "my-whatsapp-media",
+    "Region": "us-east-1"
+  },
+  "success": true
+}
+```
+
+### Delete S3 Configuration
+```
+DELETE /session/s3/config
+```
+
+Remove S3 configuration and revert to base64-only delivery.
+
+## S3 Provider Examples
+
+### AWS S3
+```json
+{
+  "enabled": true,
+  "endpoint": "",
+  "region": "us-east-1",
+  "bucket": "my-bucket",
+  "access_key": "AKIAIOSFODNN7EXAMPLE",
+  "secret_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+  "path_style": false,
+  "media_delivery": "s3",
+  "retention_days": 30
+}
+```
+
+### MinIO
+```json
+{
+  "enabled": true,
+  "endpoint": "https://minio.example.com",
+  "region": "us-east-1",
+  "bucket": "whatsapp-media",
+  "access_key": "minioadmin",
+  "secret_key": "minioadmin",
+  "path_style": true,
+  "media_delivery": "both",
+  "retention_days": 0
+}
+```
+
+### Backblaze B2
+```json
+{
+  "enabled": true,
+  "endpoint": "https://s3.us-west-004.backblazeb2.com",
+  "region": "us-west-004",
+  "bucket": "my-b2-bucket",
+  "access_key": "0004b0000000000000000000001",
+  "secret_key": "K004XXXXXXXXXXXXXXXXXXXXXXXX",
+  "path_style": false,
+  "media_delivery": "s3",
+  "retention_days": 90
+}
+```
+
+## File Organization
+
+Media files are stored in S3 with the following structure:
+
+```
+users/{user_id}/{inbox|outbox}/{contact_jid}/{year}/{month}/{day}/{media_type}/{message_id}.{ext}
+```
+
+Example:
+```
+users/abc123/inbox/5491155553934_s.whatsapp.net/2024/12/25/images/3EB06F9067F80BAB89FF.jpg
+```
+
+## Webhook Payload
+
+When S3 is enabled, webhook payloads will include S3 information based on the `media_delivery` setting:
+
+### S3 Only (`media_delivery: "s3"`)
+```json
+{
+  "event": {
+    "Info": { ... },
+    "Message": { ... }
+  },
+  "s3": {
+    "url": "https://my-bucket.s3.us-east-1.amazonaws.com/users/abc123/inbox/...",
+    "key": "users/abc123/inbox/5491155553934/2024/12/25/images/3EB06F9067F80BAB89FF.jpg",
+    "bucket": "my-bucket",
+    "size": 245632,
+    "mimeType": "image/jpeg",
+    "fileName": "3EB06F9067F80BAB89FF.jpg"
+  }
+}
+```
+
+### Both S3 and Base64 (`media_delivery: "both"`)
+```json
+{
+  "event": { ... },
+  "base64": "/9j/4AAQSkZJRgABAQAAAQ...",
+  "mimeType": "image/jpeg",
+  "fileName": "3EB06F9067F80BAB89FF.jpg",
+  "s3": {
+    "url": "https://my-bucket.s3.us-east-1.amazonaws.com/users/abc123/inbox/...",
+    "key": "users/abc123/inbox/5491155553934/2024/12/25/images/3EB06F9067F80BAB89FF.jpg",
+    "bucket": "my-bucket",
+    "size": 245632,
+    "mimeType": "image/jpeg",
+    "fileName": "3EB06F9067F80BAB89FF.jpg"
+  }
+}
+```
+
+## Bucket Policy
+
+Ensure your S3 bucket has the appropriate policy for public read access:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadGetObject",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::my-bucket/*"
+    }
+  ]
+}
+```
+
+## Important Notes
+
+1. **Security**: Store S3 credentials securely. They are encrypted in the database but should still be treated as sensitive.
+
+2. **Costs**: S3 storage and bandwidth costs apply based on your provider's pricing.
+
+3. **Performance**: S3 upload is synchronous. Large files may slightly delay webhook delivery.
+
+4. **Fallback**: If S3 upload fails, the webhook is still sent (without S3 data if `media_delivery` is "s3" only).
+
+5. **Retention**: Files are automatically deleted after the retention period if set. Use 0 for permanent storage.
+
+6. **Public Access**: Files are stored with public-read permissions. Do not use this for sensitive data without additional security measures.
+
+## Migration Guide
+
+To migrate from base64-only to S3 storage:
+
+1. Configure S3 with `media_delivery: "both"` initially
+2. Update your webhook handler to support both formats
+3. Test thoroughly with various media types
+4. Switch to `media_delivery: "s3"` once confirmed working
+5. Update webhook handler to use S3 URLs exclusively
+
+## Troubleshooting
+
+### Connection Test Fails
+- Verify credentials are correct
+- Check bucket exists and is accessible
+- Ensure region is correct
+- For MinIO, ensure `path_style: true` is set
+
+### Files Not Accessible
+- Check bucket policy allows public read
+- Verify CORS settings if accessing from browser
+- Ensure `public_url` is correct if using CDN
+
+### Webhook Missing S3 Data
+- Check `media_delivery` setting
+- Verify S3 is enabled
+- Check logs for upload errors
+- Test S3 connection
+
+
+## Webhook format configuration
+
+Starting from version X.X.X, you can choose the format for sending webhook data using the `WEBHOOK_FORMAT` environment variable.
+
+### Available options
+- `form` (default): Sends data as `application/x-www-form-urlencoded`, with the JSON in the `jsonData` field and the token in the `token` field.
+- `json`: Sends data as `application/json`, with the full event JSON as the body and the `token` field included.
+
+### How to configure
+
+In your terminal, set the variable before starting the service:
+
+```bash
+export WEBHOOK_FORMAT=json # or "form" for the default
+```
+
+### Payload examples
+
+**Form mode (default):**
+
+```
+POST /webhook
+Content-Type: application/x-www-form-urlencoded
+
+jsonData={...json...}&token=YOUR_TOKEN
+```
+
+**JSON mode:**
+
+```
+POST /webhook
+Content-Type: application/json
+
+{
+  "event": {...},
+  "type": "ReadReceipt",
+  ...
+  "token": "YOUR_TOKEN"
+}
+```
+
+### Notes
+- The `form` mode ensures compatibility with legacy or older webhook systems.
+- The `json` mode is recommended for modern integrations and easier backend parsing.
+- If you do not set the variable, the system will use `form` mode by default.

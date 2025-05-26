@@ -39,13 +39,13 @@ func (v Values) Get(key string) string {
 	return v.m[key]
 }
 
-var messageTypes = []string{"Message", "ReadReceipt", "Presence", "HistorySync", "ChatPresence", "All"}
+// messageTypes moved to constants.go as supportedEventTypes
 
 func (s *server) authadmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("Authorization")
 		if token != *adminToken {
-			s.Respond(w, r, http.StatusUnauthorized, errors.New("Unauthorized"))
+			s.Respond(w, r, http.StatusUnauthorized, errors.New("unauthorized"))
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -108,7 +108,7 @@ func (s *server) authalice(next http.Handler) http.Handler {
 		}
 
 		if txtid == "" {
-			s.Respond(w, r, http.StatusUnauthorized, errors.New("Unauthorized"))
+			s.Respond(w, r, http.StatusUnauthorized, errors.New("unauthorized"))
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -136,24 +136,24 @@ func (s *server) Connect() http.HandlerFunc {
 		var t connectStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if clientManager.GetWhatsmeowClient(txtid) != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("Already Connected"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("already connected"))
 			return
 		} else {
 
 			var subscribedEvents []string
 			if len(t.Subscribe) < 1 {
-				if !Find(subscribedEvents, "All") {
-					subscribedEvents = append(subscribedEvents, "All")
+				if !Find(subscribedEvents, "") {
+					subscribedEvents = append(subscribedEvents, "")
 				}
 			} else {
 				for _, arg := range t.Subscribe {
-					if !Find(messageTypes, arg) {
-						log.Warn().Str("Type", arg).Msg("Message type discarded")
+					if !Find(supportedEventTypes, arg) {
+						log.Warn().Str("Type", arg).Msg("Event type discarded")
 						continue
 					}
 					if !Find(subscribedEvents, arg) {
@@ -180,11 +180,11 @@ func (s *server) Connect() http.HandlerFunc {
 
 				if clientManager.GetWhatsmeowClient(txtid) != nil {
 					if !clientManager.GetWhatsmeowClient(txtid).IsConnected() {
-						s.Respond(w, r, http.StatusInternalServerError, errors.New("Failed to Connect"))
+						s.Respond(w, r, http.StatusInternalServerError, errors.New("failed to Connect"))
 						return
 					}
 				} else {
-					s.Respond(w, r, http.StatusInternalServerError, errors.New("Failed to Connect"))
+					s.Respond(w, r, http.StatusInternalServerError, errors.New("failed to connect"))
 					return
 				}
 			}
@@ -211,7 +211,7 @@ func (s *server) Disconnect() http.HandlerFunc {
 		token := r.Context().Value("userinfo").(Values).Get("Token")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 		if clientManager.GetWhatsmeowClient(txtid).IsConnected() == true {
@@ -244,7 +244,7 @@ func (s *server) Disconnect() http.HandlerFunc {
 			//}
 		} else {
 			log.Warn().Str("jid", jid).Msg("Ignoring disconnect as it was not connected")
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("Cannot disconnect because it is not logged in"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("cannot disconnect because it is not logged in"))
 			return
 		}
 	}
@@ -260,20 +260,20 @@ func (s *server) GetWebhook() http.HandlerFunc {
 
 		rows, err := s.db.Query("SELECT webhook,events FROM users WHERE id=$1 LIMIT 1", txtid)
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Could not get webhook: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not get webhook: %v", err)))
 			return
 		}
 		defer rows.Close()
 		for rows.Next() {
 			err = rows.Scan(&webhook, &events)
 			if err != nil {
-				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Could not get webhook: %s", fmt.Sprintf("%s", err))))
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not get webhook: %s", fmt.Sprintf("%s", err))))
 				return
 			}
 		}
 		err = rows.Err()
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Could not get webhook: %s", fmt.Sprintf("%s", err))))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not get webhook: %s", fmt.Sprintf("%s", err))))
 			return
 		}
 
@@ -299,7 +299,7 @@ func (s *server) DeleteWebhook() http.HandlerFunc {
 		// Update the database to remove the webhook and clear events
 		_, err := s.db.Exec("UPDATE users SET webhook='', events='' WHERE id=$1", txtid)
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Could not delete webhook: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not delete webhook: %v", err)))
 			return
 		}
 
@@ -333,7 +333,7 @@ func (s *server) UpdateWebhook() http.HandlerFunc {
 		var t updateWebhookStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode payload"))
 			return
 		}
 
@@ -342,15 +342,15 @@ func (s *server) UpdateWebhook() http.HandlerFunc {
 		var eventstring string
 		var validEvents []string
 		for _, event := range t.Events {
-			if !Find(messageTypes, event) {
-				log.Warn().Str("Type", event).Msg("Message type discarded")
+			if !Find(supportedEventTypes, event) {
+				log.Warn().Str("Type", event).Msg("Event type discarded")
 				continue
 			}
 			validEvents = append(validEvents, event)
 		}
 		eventstring = strings.Join(validEvents, ",")
 		if eventstring == "," || eventstring == "" {
-			eventstring = "All"
+			eventstring = ""
 		}
 
 		if !t.Active {
@@ -360,13 +360,19 @@ func (s *server) UpdateWebhook() http.HandlerFunc {
 
 		if len(t.Events) > 0 {
 			_, err = s.db.Exec("UPDATE users SET webhook=$1, events=$2 WHERE id=$3", webhook, eventstring, txtid)
+
+			// Update MyClient if connected - integrated UpdateEvents functionality
+			if len(validEvents) > 0 {
+				clientManager.UpdateMyClientSubscriptions(txtid, validEvents)
+				log.Info().Strs("events", validEvents).Str("user", txtid).Msg("Updated event subscriptions")
+			}
 		} else {
 			// Update only webhook
 			_, err = s.db.Exec("UPDATE users SET webhook=$1 WHERE id=$2", webhook, txtid)
 		}
 
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Could not update webhook: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not update webhook: %v", err)))
 			return
 		}
 
@@ -374,7 +380,7 @@ func (s *server) UpdateWebhook() http.HandlerFunc {
 		v = updateUserInfo(v, "Events", eventstring)
 		userinfocache.Set(token, v, cache.NoExpiration)
 
-		response := map[string]interface{}{"webhook": webhook, "events": t.Events, "active": t.Active}
+		response := map[string]interface{}{"webhook": webhook, "events": validEvents, "active": t.Active}
 		responseJson, err := json.Marshal(response)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, err)
@@ -398,7 +404,7 @@ func (s *server) SetWebhook() http.HandlerFunc {
 		var t webhookStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode payload"))
 			return
 		}
 
@@ -409,26 +415,32 @@ func (s *server) SetWebhook() http.HandlerFunc {
 		if len(t.Events) > 0 {
 			var validEvents []string
 			for _, event := range t.Events {
-				if !Find(messageTypes, event) {
-					log.Warn().Str("Type", event).Msg("Message type discarded")
+				if !Find(supportedEventTypes, event) {
+					log.Warn().Str("Type", event).Msg("Event type discarded")
 					continue
 				}
 				validEvents = append(validEvents, event)
 			}
 			eventstring = strings.Join(validEvents, ",")
 			if eventstring == "," || eventstring == "" {
-				eventstring = "All"
+				eventstring = ""
 			}
 
 			// Update both webhook and events
 			_, err = s.db.Exec("UPDATE users SET webhook=$1, events=$2 WHERE id=$3", webhook, eventstring, txtid)
+
+			// Update MyClient if connected - integrated UpdateEvents functionality
+			if len(validEvents) > 0 {
+				clientManager.UpdateMyClientSubscriptions(txtid, validEvents)
+				log.Info().Strs("events", validEvents).Str("user", txtid).Msg("Updated event subscriptions")
+			}
 		} else {
 			// Update only webhook
 			_, err = s.db.Exec("UPDATE users SET webhook=$1 WHERE id=$2", webhook, txtid)
 		}
 
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Could not set webhook: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not set webhook: %v", err)))
 			return
 		}
 
@@ -454,11 +466,11 @@ func (s *server) GetQR() http.HandlerFunc {
 		code := ""
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		} else {
 			if clientManager.GetWhatsmeowClient(txtid).IsConnected() == false {
-				s.Respond(w, r, http.StatusInternalServerError, errors.New("Not connected"))
+				s.Respond(w, r, http.StatusInternalServerError, errors.New("not connected"))
 				return
 			}
 			rows, err := s.db.Query("SELECT qrcode AS code FROM users WHERE id=$1 LIMIT 1", txtid)
@@ -480,7 +492,7 @@ func (s *server) GetQR() http.HandlerFunc {
 				return
 			}
 			if clientManager.GetWhatsmeowClient(txtid).IsLoggedIn() == true {
-				s.Respond(w, r, http.StatusInternalServerError, errors.New("Already Loggedin"))
+				s.Respond(w, r, http.StatusInternalServerError, errors.New("already logged in"))
 				return
 			}
 		}
@@ -505,15 +517,15 @@ func (s *server) Logout() http.HandlerFunc {
 		jid := r.Context().Value("userinfo").(Values).Get("Jid")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		} else {
 			if clientManager.GetWhatsmeowClient(txtid).IsLoggedIn() == true &&
 				clientManager.GetWhatsmeowClient(txtid).IsConnected() == true {
-				err := clientManager.GetWhatsmeowClient(txtid).Logout()
+				err := clientManager.GetWhatsmeowClient(txtid).Logout(context.Background())
 				if err != nil {
 					log.Error().Str("jid", jid).Msg("Could not perform logout")
-					s.Respond(w, r, http.StatusInternalServerError, errors.New("Could not perform logout"))
+					s.Respond(w, r, http.StatusInternalServerError, errors.New("could not perform logout"))
 					return
 				} else {
 					log.Info().Str("jid", jid).Msg("Logged out")
@@ -523,11 +535,11 @@ func (s *server) Logout() http.HandlerFunc {
 			} else {
 				if clientManager.GetWhatsmeowClient(txtid).IsConnected() == true {
 					log.Warn().Str("jid", jid).Msg("Ignoring logout as it was not logged in")
-					s.Respond(w, r, http.StatusInternalServerError, errors.New("Could not logout as it was not logged in"))
+					s.Respond(w, r, http.StatusInternalServerError, errors.New("could not logout as it was not logged in"))
 					return
 				} else {
 					log.Warn().Str("jid", jid).Msg("Ignoring logout as it was not connected")
-					s.Respond(w, r, http.StatusInternalServerError, errors.New("Could not disconnect as it was not connected"))
+					s.Respond(w, r, http.StatusInternalServerError, errors.New("could not disconnect as it was not connected"))
 					return
 				}
 			}
@@ -556,7 +568,7 @@ func (s *server) PairPhone() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -564,23 +576,23 @@ func (s *server) PairPhone() http.HandlerFunc {
 		var t pairStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		isLoggedIn := clientManager.GetWhatsmeowClient(txtid).IsLoggedIn()
 		if isLoggedIn {
-			log.Error().Msg(fmt.Sprintf("%s", "Already paired"))
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Already paired"))
+			log.Error().Msg(fmt.Sprintf("%s", "already paired"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("already paired"))
 			return
 		}
 
-		linkingCode, err := clientManager.GetWhatsmeowClient(txtid).PairPhone(t.Phone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
+		linkingCode, err := clientManager.GetWhatsmeowClient(txtid).PairPhone(context.Background(), t.Phone, true, whatsmeow.PairClientChrome, "Chrome (Linux)")
 		if err != nil {
 			log.Error().Msg(fmt.Sprintf("%s", err))
 			s.Respond(w, r, http.StatusBadRequest, err)
@@ -622,7 +634,7 @@ func (s *server) GetStatus() http.HandlerFunc {
 
 		/*
 			if clientManager.GetWhatsmeowClient(txtid) == nil {
-				s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+				s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 				return
 			}
 		*/
@@ -630,17 +642,43 @@ func (s *server) GetStatus() http.HandlerFunc {
 		isConnected := clientManager.GetWhatsmeowClient(txtid).IsConnected()
 		isLoggedIn := clientManager.GetWhatsmeowClient(txtid).IsLoggedIn()
 
+		// Get proxy_config
+		var proxyURL string
+		s.db.QueryRow("SELECT proxy_url FROM users WHERE id = $1", txtid).Scan(&proxyURL)
+		proxyConfig := map[string]interface{}{
+			"enabled":   proxyURL != "",
+			"proxy_url": proxyURL,
+		}
+		// Get s3_config
+		var s3Enabled bool
+		var s3Endpoint, s3Region, s3Bucket, s3AccessKey, s3PublicURL, s3MediaDelivery string
+		var s3PathStyle bool
+		var s3RetentionDays int
+		s.db.QueryRow(`SELECT s3_enabled, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_path_style, s3_public_url, media_delivery, s3_retention_days FROM users WHERE id = $1`, txtid).Scan(&s3Enabled, &s3Endpoint, &s3Region, &s3Bucket, &s3AccessKey, &s3PathStyle, &s3PublicURL, &s3MediaDelivery, &s3RetentionDays)
+		s3Config := map[string]interface{}{
+			"enabled":        s3Enabled,
+			"endpoint":       s3Endpoint,
+			"region":         s3Region,
+			"bucket":         s3Bucket,
+			"access_key":     "***",
+			"path_style":     s3PathStyle,
+			"public_url":     s3PublicURL,
+			"media_delivery": s3MediaDelivery,
+			"retention_days": s3RetentionDays,
+		}
 		response := map[string]interface{}{
-			"id":        txtid,
-			"name":      userInfo.Get("Name"),
-			"connected": isConnected,
-			"loggedIn":  isLoggedIn,
-			"token":     userInfo.Get("Token"),
-			"jid":       userInfo.Get("Jid"),
-			"webhook":   userInfo.Get("Webhook"),
-			"events":    userInfo.Get("Events"),
-			"proxy_url": userInfo.Get("Proxy"),
-			"qrcode":    userInfo.Get("Qrcode"),
+			"id":           txtid,
+			"name":         userInfo.Get("Name"),
+			"connected":    isConnected,
+			"loggedIn":     isLoggedIn,
+			"token":        userInfo.Get("Token"),
+			"jid":          userInfo.Get("Jid"),
+			"webhook":      userInfo.Get("Webhook"),
+			"events":       userInfo.Get("Events"),
+			"proxy_url":    userInfo.Get("Proxy"),
+			"qrcode":       userInfo.Get("Qrcode"),
+			"proxy_config": proxyConfig,
+			"s3_config":    s3Config,
 		}
 		responseJson, err := json.Marshal(response)
 		if err != nil {
@@ -672,7 +710,7 @@ func (s *server) SendDocument() http.HandlerFunc {
 		var resp whatsmeow.SendResponse
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -681,22 +719,22 @@ func (s *server) SendDocument() http.HandlerFunc {
 		var err error
 		err = decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if t.Document == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Document in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Document in Payload"))
 			return
 		}
 
 		if t.FileName == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing FileName in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing FileName in Payload"))
 			return
 		}
 
@@ -708,7 +746,7 @@ func (s *server) SendDocument() http.HandlerFunc {
 		}
 
 		if t.Id == "" {
-			msgid = whatsmeow.GenerateMessageID()
+			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		} else {
 			msgid = t.Id
 		}
@@ -719,18 +757,18 @@ func (s *server) SendDocument() http.HandlerFunc {
 		if t.Document[0:29] == "data:application/octet-stream" {
 			var dataURL, err = dataurl.DecodeString(t.Document)
 			if err != nil {
-				s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode base64 encoded data from payload"))
+				s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
 				return
 			} else {
 				filedata = dataURL.Data
 				uploaded, err = clientManager.GetWhatsmeowClient(txtid).Upload(context.Background(), filedata, whatsmeow.MediaDocument)
 				if err != nil {
-					s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Failed to upload file: %v", err)))
+					s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload file: %v", err)))
 					return
 				}
 			}
 		} else {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Document data should start with \"data:application/octet-stream;base64,\""))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("document data should start with \"data:application/octet-stream;base64,\""))
 			return
 		}
 
@@ -801,7 +839,7 @@ func (s *server) SendAudio() http.HandlerFunc {
 		var resp whatsmeow.SendResponse
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -809,17 +847,17 @@ func (s *server) SendAudio() http.HandlerFunc {
 		var t audioStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if t.Audio == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Audio in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Audio in Payload"))
 			return
 		}
 
@@ -831,7 +869,7 @@ func (s *server) SendAudio() http.HandlerFunc {
 		}
 
 		if t.Id == "" {
-			msgid = whatsmeow.GenerateMessageID()
+			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		} else {
 			msgid = t.Id
 		}
@@ -842,18 +880,18 @@ func (s *server) SendAudio() http.HandlerFunc {
 		if t.Audio[0:14] == "data:audio/ogg" {
 			var dataURL, err = dataurl.DecodeString(t.Audio)
 			if err != nil {
-				s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode base64 encoded data from payload"))
+				s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
 				return
 			} else {
 				filedata = dataURL.Data
 				uploaded, err = clientManager.GetWhatsmeowClient(txtid).Upload(context.Background(), filedata, whatsmeow.MediaAudio)
 				if err != nil {
-					s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Failed to upload file: %v", err)))
+					s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload file: %v", err)))
 					return
 				}
 			}
 		} else {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Audio data should start with \"data:audio/ogg;base64,\""))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("audio data should start with \"data:audio/ogg;base64,\""))
 			return
 		}
 
@@ -923,7 +961,7 @@ func (s *server) SendImage() http.HandlerFunc {
 		var resp whatsmeow.SendResponse
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -931,17 +969,17 @@ func (s *server) SendImage() http.HandlerFunc {
 		var t imageStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if t.Image == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Image in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Image in Payload"))
 			return
 		}
 
@@ -953,7 +991,7 @@ func (s *server) SendImage() http.HandlerFunc {
 		}
 
 		if t.Id == "" {
-			msgid = whatsmeow.GenerateMessageID()
+			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		} else {
 			msgid = t.Id
 		}
@@ -965,13 +1003,13 @@ func (s *server) SendImage() http.HandlerFunc {
 		if t.Image[0:10] == "data:image" {
 			var dataURL, err = dataurl.DecodeString(t.Image)
 			if err != nil {
-				s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode base64 encoded data from payload"))
+				s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
 				return
 			} else {
 				filedata = dataURL.Data
 				uploaded, err = clientManager.GetWhatsmeowClient(txtid).Upload(context.Background(), filedata, whatsmeow.MediaImage)
 				if err != nil {
-					s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Failed to upload file: %v", err)))
+					s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload file: %v", err)))
 					return
 				}
 			}
@@ -980,7 +1018,7 @@ func (s *server) SendImage() http.HandlerFunc {
 			reader := bytes.NewReader(filedata)
 			img, _, err := image.Decode(reader)
 			if err != nil {
-				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Could not decode image for thumbnail preparation: %v", err)))
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not decode image for thumbnail preparation: %v", err)))
 				return
 			}
 
@@ -1079,7 +1117,7 @@ func (s *server) SendSticker() http.HandlerFunc {
 		var resp whatsmeow.SendResponse
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -1087,17 +1125,17 @@ func (s *server) SendSticker() http.HandlerFunc {
 		var t stickerStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if t.Sticker == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Sticker in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Sticker in Payload"))
 			return
 		}
 
@@ -1109,7 +1147,7 @@ func (s *server) SendSticker() http.HandlerFunc {
 		}
 
 		if t.Id == "" {
-			msgid = whatsmeow.GenerateMessageID()
+			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		} else {
 			msgid = t.Id
 		}
@@ -1120,7 +1158,7 @@ func (s *server) SendSticker() http.HandlerFunc {
 		if t.Sticker[0:4] == "data" {
 			var dataURL, err = dataurl.DecodeString(t.Sticker)
 			if err != nil {
-				s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode base64 encoded data from payload"))
+				s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
 				return
 			} else {
 				filedata = dataURL.Data
@@ -1203,7 +1241,7 @@ func (s *server) SendVideo() http.HandlerFunc {
 		var resp whatsmeow.SendResponse
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -1211,17 +1249,17 @@ func (s *server) SendVideo() http.HandlerFunc {
 		var t imageStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if t.Video == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Video in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Video in Payload"))
 			return
 		}
 
@@ -1233,7 +1271,7 @@ func (s *server) SendVideo() http.HandlerFunc {
 		}
 
 		if t.Id == "" {
-			msgid = whatsmeow.GenerateMessageID()
+			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		} else {
 			msgid = t.Id
 		}
@@ -1244,18 +1282,18 @@ func (s *server) SendVideo() http.HandlerFunc {
 		if t.Video[0:4] == "data" {
 			var dataURL, err = dataurl.DecodeString(t.Video)
 			if err != nil {
-				s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode base64 encoded data from payload"))
+				s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
 				return
 			} else {
 				filedata = dataURL.Data
 				uploaded, err = clientManager.GetWhatsmeowClient(txtid).Upload(context.Background(), filedata, whatsmeow.MediaVideo)
 				if err != nil {
-					s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Failed to upload file: %v", err)))
+					s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload file: %v", err)))
 					return
 				}
 			}
 		} else {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Data should start with \"data:mime/type;base64,\""))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("data should start with \"data:mime/type;base64,\""))
 			return
 		}
 
@@ -1292,7 +1330,7 @@ func (s *server) SendVideo() http.HandlerFunc {
 
 		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
 		}
 
@@ -1324,7 +1362,7 @@ func (s *server) SendContact() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -1335,19 +1373,19 @@ func (s *server) SendContact() http.HandlerFunc {
 		var t contactStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 		if t.Name == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Name in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Name in Payload"))
 			return
 		}
 		if t.Vcard == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Vcard in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Vcard in Payload"))
 			return
 		}
 
@@ -1359,7 +1397,7 @@ func (s *server) SendContact() http.HandlerFunc {
 		}
 
 		if t.Id == "" {
-			msgid = whatsmeow.GenerateMessageID()
+			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		} else {
 			msgid = t.Id
 		}
@@ -1385,7 +1423,7 @@ func (s *server) SendContact() http.HandlerFunc {
 
 		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
 		}
 
@@ -1418,7 +1456,7 @@ func (s *server) SendLocation() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -1429,19 +1467,19 @@ func (s *server) SendLocation() http.HandlerFunc {
 		var t locationStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 		if t.Latitude == 0 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Latitude in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Latitude in Payload"))
 			return
 		}
 		if t.Longitude == 0 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Longitude in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Longitude in Payload"))
 			return
 		}
 
@@ -1453,7 +1491,7 @@ func (s *server) SendLocation() http.HandlerFunc {
 		}
 
 		if t.Id == "" {
-			msgid = whatsmeow.GenerateMessageID()
+			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		} else {
 			msgid = t.Id
 		}
@@ -1480,7 +1518,7 @@ func (s *server) SendLocation() http.HandlerFunc {
 
 		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
 		}
 
@@ -1497,7 +1535,6 @@ func (s *server) SendLocation() http.HandlerFunc {
 }
 
 // Sends Buttons (not implemented, does not work)
-
 func (s *server) SendButtons() http.HandlerFunc {
 
 	type buttonStruct struct {
@@ -1516,7 +1553,7 @@ func (s *server) SendButtons() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -1527,17 +1564,17 @@ func (s *server) SendButtons() http.HandlerFunc {
 		var t textStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if t.Title == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Title in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Title in Payload"))
 			return
 		}
 
@@ -1552,12 +1589,12 @@ func (s *server) SendButtons() http.HandlerFunc {
 
 		recipient, ok := parseJID(t.Phone)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Phone"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Phone"))
 			return
 		}
 
 		if t.Id == "" {
-			msgid = whatsmeow.GenerateMessageID()
+			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		} else {
 			msgid = t.Id
 		}
@@ -1585,7 +1622,7 @@ func (s *server) SendButtons() http.HandlerFunc {
 			},
 		}}, whatsmeow.SendRequestExtra{ID: msgid})
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
 		}
 
@@ -1602,142 +1639,151 @@ func (s *server) SendButtons() http.HandlerFunc {
 }
 
 // SendList
-// https://github.com/tulir/whatsmeow/issues/305
 func (s *server) SendList() http.HandlerFunc {
-
-	type rowsStruct struct {
-		RowId       string
-		Title       string
-		Description string
+	type listItem struct {
+		Title string `json:"title"`
+		Desc  string `json:"desc"`
+		RowId string `json:"RowId"`
 	}
-
-	type sectionsStruct struct {
-		Title string
-		Rows  []rowsStruct
+	type section struct {
+		Title string     `json:"title"`
+		Rows  []listItem `json:"rows"`
 	}
-
-	type listStruct struct {
-		Phone       string
-		Title       string
-		Description string
-		ButtonText  string
-		FooterText  string
-		Sections    []sectionsStruct
-		Id          string
+	type listRequest struct {
+		Phone      string     `json:"Phone"`
+		ButtonText string     `json:"ButtonText"`
+		Desc       string     `json:"Desc"`
+		TopText    string     `json:"TopText"`
+		Sections   []section  `json:"Sections"`
+		List       []listItem `json:"List"` // compatibility
+		FooterText string     `json:"FooterText"`
+		Id         string     `json:"Id,omitempty"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
-
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
 			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
-		msgid := ""
-		var resp whatsmeow.SendResponse
-
-		decoder := json.NewDecoder(r.Body)
-		var t listStruct
-		err := decoder.Decode(&t)
-		marshal, _ := json.Marshal(t)
-		fmt.Println(string(marshal))
-		if err != nil {
-			fmt.Println(err)
+		var req listRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
-		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
+		// Required fields validation - FooterText is optional
+		if req.Phone == "" || req.ButtonText == "" || req.Desc == "" || req.TopText == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing required fields: Phone, ButtonText, Desc, TopText"))
 			return
 		}
 
-		if t.Title == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Title in Payload"))
+		// Priority for Sections, but accepts List for compatibility
+		var sections []*waE2E.ListMessage_Section
+		if len(req.Sections) > 0 {
+			for _, sec := range req.Sections {
+				var rows []*waE2E.ListMessage_Row
+				for _, item := range sec.Rows {
+					rowId := item.RowId
+					if rowId == "" {
+						rowId = item.Title // fallback
+					}
+					rows = append(rows, &waE2E.ListMessage_Row{
+						RowID:       proto.String(rowId),
+						Title:       proto.String(item.Title),
+						Description: proto.String(item.Desc),
+					})
+				}
+				sections = append(sections, &waE2E.ListMessage_Section{
+					Title: proto.String(sec.Title),
+					Rows:  rows,
+				})
+			}
+		} else if len(req.List) > 0 {
+			var rows []*waE2E.ListMessage_Row
+			for _, item := range req.List {
+				rowId := item.RowId
+				if rowId == "" {
+					rowId = item.Title // fallback
+				}
+				rows = append(rows, &waE2E.ListMessage_Row{
+					RowID:       proto.String(rowId),
+					Title:       proto.String(item.Title),
+					Description: proto.String(item.Desc),
+				})
+			}
+
+			// Debug: dynamic title: uses TopText if it exists, otherwise 'Menu'
+			sectionTitle := req.TopText
+			if sectionTitle == "" {
+				sectionTitle = "Menu"
+			}
+			sections = append(sections, &waE2E.ListMessage_Section{
+				Title: proto.String(sectionTitle),
+				Rows:  rows,
+			})
+		} else {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("no section or list provided"))
 			return
 		}
 
-		if t.Description == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Description in Payload"))
-			return
-		}
-
-		if t.ButtonText == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("missing ButtonText in Payload"))
-			return
-		}
-
-		if len(t.Sections) < 1 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Sections in Payload"))
-			return
-		}
-		recipient, ok := parseJID(t.Phone)
+		recipient, ok := parseJID(req.Phone)
 		if !ok {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Phone"))
 			return
 		}
 
-		if t.Id == "" {
-			msgid = whatsmeow.GenerateMessageID()
-		} else {
-			msgid = t.Id
+		msgid := req.Id
+		if msgid == "" {
+			msgid = clientManager.GetWhatsmeowClient(txtid).GenerateMessageID()
 		}
 
-		var sections []*waE2E.ListMessage_Section
-
-		for _, item := range t.Sections {
-			var rows []*waE2E.ListMessage_Row
-			id := 1
-			for _, row := range item.Rows {
-				var idtext string
-				if row.RowId == "" {
-					idtext = strconv.Itoa(id)
-				} else {
-					idtext = row.RowId
-				}
-				rows = append(rows, &waE2E.ListMessage_Row{
-					RowID:       proto.String(idtext),
-					Title:       proto.String(row.Title),
-					Description: proto.String(row.Description),
-				})
-			}
-
-			sections = append(sections, &waE2E.ListMessage_Section{
-				Title: proto.String(item.Title),
-				Rows:  rows,
-			})
-		}
-		msg1 := &waE2E.ListMessage{
-			Title:       proto.String(t.Title),
-			Description: proto.String(t.Description),
-			ButtonText:  proto.String(t.ButtonText),
+		// Create the message with ListMessage
+		listMsg := &waE2E.ListMessage{
+			Title:       proto.String(req.TopText),
+			Description: proto.String(req.Desc),
+			ButtonText:  proto.String(req.ButtonText),
 			ListType:    waE2E.ListMessage_SINGLE_SELECT.Enum(),
 			Sections:    sections,
-			FooterText:  proto.String(t.FooterText),
 		}
 
-		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, &waE2E.Message{
+		// Add footer only if provided
+		if req.FooterText != "" {
+			listMsg.FooterText = proto.String(req.FooterText)
+		}
+
+		// Try with ViewOnceMessage wrapper as some users report this helps with error 405
+		msg := &waE2E.Message{
 			ViewOnceMessage: &waE2E.FutureProofMessage{
 				Message: &waE2E.Message{
-					ListMessage: msg1,
+					ListMessage: listMsg,
 				},
-			}}, whatsmeow.SendRequestExtra{ID: msgid})
+			},
+		}
+
+		resp, err := clientManager.GetWhatsmeowClient(txtid).SendMessage(
+			context.Background(),
+			recipient,
+			msg,
+			whatsmeow.SendRequestExtra{ID: msgid},
+		)
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
 		}
 
-		log.Info().Str("timestamp", fmt.Sprintf("%v", resp.Timestamp)).Str("id", msgid).Msg("Message sent")
-		response := map[string]interface{}{"Details": "Sent", "Timestamp": resp.Timestamp, "Id": msgid}
+		response := map[string]interface{}{
+			"Details":   "Sent",
+			"Timestamp": resp.Timestamp,
+			"Id":        msgid,
+		}
 		responseJson, err := json.Marshal(response)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, err)
 		} else {
 			s.Respond(w, r, http.StatusOK, string(responseJson))
 		}
-		return
 	}
 }
 
@@ -1756,7 +1802,7 @@ func (s *server) SendMessage() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -1767,17 +1813,17 @@ func (s *server) SendMessage() http.HandlerFunc {
 		var t textStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if t.Body == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Body in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Body in Payload"))
 			return
 		}
 
@@ -1816,7 +1862,7 @@ func (s *server) SendMessage() http.HandlerFunc {
 
 		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
 		}
 
@@ -1845,7 +1891,7 @@ func (s *server) SendPoll() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -1856,22 +1902,22 @@ func (s *server) SendPoll() http.HandlerFunc {
 		var req pollRequest
 		err := decoder.Decode(&req)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode payload"))
 			return
 		}
 
 		if req.Group == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Grouop in payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Grouop in payload"))
 			return
 		}
 
 		if req.Header == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Header in payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Header in payload"))
 			return
 		}
 
 		if len(req.Options) < 2 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("At least 2 options are required"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("at least 2 options are required"))
 			return
 		}
 
@@ -1890,7 +1936,7 @@ func (s *server) SendPoll() http.HandlerFunc {
 		pollMessage := clientManager.GetWhatsmeowClient(txtid).BuildPollCreation(req.Header, req.Options, 1)
 		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, pollMessage, whatsmeow.SendRequestExtra{ID: msgid})
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Failed to send poll: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to send poll: %v", err)))
 			return
 		}
 
@@ -1919,7 +1965,7 @@ func (s *server) DeleteMessage() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -1930,17 +1976,17 @@ func (s *server) DeleteMessage() http.HandlerFunc {
 		var t textStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if t.Id == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Id in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Id in Payload"))
 			return
 		}
 
@@ -1948,13 +1994,13 @@ func (s *server) DeleteMessage() http.HandlerFunc {
 
 		recipient, ok := parseJID(t.Phone)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Phone"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Phone"))
 			return
 		}
 
 		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, clientManager.GetWhatsmeowClient(txtid).BuildRevoke(recipient, types.EmptyJID, msgid))
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
 		}
 
@@ -1986,7 +2032,7 @@ func (s *server) SendEditMessage() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -1997,17 +2043,17 @@ func (s *server) SendEditMessage() http.HandlerFunc {
 		var t editStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if t.Body == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Body in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Body in Payload"))
 			return
 		}
 
@@ -2019,7 +2065,7 @@ func (s *server) SendEditMessage() http.HandlerFunc {
 		}
 
 		if t.Id == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Id in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Id in Payload"))
 			return
 		} else {
 			msgid = t.Id
@@ -2047,7 +2093,7 @@ func (s *server) SendEditMessage() http.HandlerFunc {
 
 		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, clientManager.GetWhatsmeowClient(txtid).BuildEdit(recipient, msgid, msg))
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending edit message: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending edit message: %v", err)))
 			return
 		}
 
@@ -2090,7 +2136,7 @@ func (s *server) SendTemplate() http.HandlerFunc {
 		userid, _ := strconv.Atoi(txtid)
 
 		if clientManager.GetWhatsmeowClient(userid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -2102,33 +2148,33 @@ func (s *server) SendTemplate() http.HandlerFunc {
 		var t templateStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if t.Content == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Content in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Content in Payload"))
 			return
 		}
 
 		if t.Footer == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Footer in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Footer in Payload"))
 			return
 		}
 
 		if len(t.Buttons) < 1 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Buttons in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Buttons in Payload"))
 			return
 		}
 
 		recipient, ok := parseJID(t.Phone)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Phone"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Phone"))
 			return
 		}
 
@@ -2223,6 +2269,7 @@ func (s *server) SendTemplate() http.HandlerFunc {
 	}
 }
 */
+
 // checks if users/phones are on Whatsapp
 func (s *server) CheckUser() http.HandlerFunc {
 
@@ -2246,7 +2293,7 @@ func (s *server) CheckUser() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -2254,18 +2301,18 @@ func (s *server) CheckUser() http.HandlerFunc {
 		var t checkUserStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if len(t.Phone) < 1 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		resp, err := clientManager.GetWhatsmeowClient(txtid).IsOnWhatsApp(t.Phone)
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Failed to check if users are on WhatsApp: %s", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to check if users are on WhatsApp: %s", err)))
 			return
 		}
 
@@ -2305,7 +2352,7 @@ func (s *server) GetUser() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -2313,12 +2360,12 @@ func (s *server) GetUser() http.HandlerFunc {
 		var t checkUserStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if len(t.Phone) < 1 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
@@ -2356,6 +2403,7 @@ func (s *server) GetUser() http.HandlerFunc {
 	}
 }
 
+// Sets global presence status
 func (s *server) SendPresence() http.HandlerFunc {
 
 	type PresenceRequest struct {
@@ -2367,7 +2415,7 @@ func (s *server) SendPresence() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -2375,7 +2423,7 @@ func (s *server) SendPresence() http.HandlerFunc {
 		var pre PresenceRequest
 		err := decoder.Decode(&pre)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
@@ -2387,7 +2435,7 @@ func (s *server) SendPresence() http.HandlerFunc {
 		case "unavailable":
 			presence = types.PresenceUnavailable
 		default:
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Invalid presence type. Allowed values: 'available', 'unavailable'"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid presence type. Allowed values: 'available', 'unavailable'"))
 			return
 		}
 
@@ -2395,7 +2443,7 @@ func (s *server) SendPresence() http.HandlerFunc {
 
 		err = clientManager.GetWhatsmeowClient(txtid).SendPresence(presence)
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("Failure sending presence to Whatsapp servers"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("failure sending presence to Whatsapp servers"))
 			return
 		}
 
@@ -2424,7 +2472,7 @@ func (s *server) GetAvatar() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -2432,18 +2480,18 @@ func (s *server) GetAvatar() http.HandlerFunc {
 		var t getAvatarStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if len(t.Phone) < 1 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		jid, ok := parseJID(t.Phone)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Phone"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Phone"))
 			return
 		}
 
@@ -2455,14 +2503,14 @@ func (s *server) GetAvatar() http.HandlerFunc {
 			ExistingID: existingID,
 		})
 		if err != nil {
-			msg := fmt.Sprintf("Failed to get avatar: %v", err)
+			msg := fmt.Sprintf("failed to get avatar: %v", err)
 			log.Error().Msg(msg)
 			s.Respond(w, r, http.StatusInternalServerError, errors.New(msg))
 			return
 		}
 
 		if pic == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No avatar found"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no avatar found"))
 			return
 		}
 
@@ -2486,12 +2534,12 @@ func (s *server) GetContacts() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
 		result := map[types.JID]types.ContactInfo{}
-		result, err := clientManager.GetWhatsmeowClient(txtid).Store.Contacts.GetAllContacts()
+		result, err := clientManager.GetWhatsmeowClient(txtid).Store.Contacts.GetAllContacts(context.Background())
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, err)
 			return
@@ -2522,7 +2570,7 @@ func (s *server) ChatPresence() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -2530,29 +2578,29 @@ func (s *server) ChatPresence() http.HandlerFunc {
 		var t chatPresenceStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if len(t.Phone) < 1 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if len(t.State) < 1 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing State in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing State in Payload"))
 			return
 		}
 
 		jid, ok := parseJID(t.Phone)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Phone"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Phone"))
 			return
 		}
 
 		err = clientManager.GetWhatsmeowClient(txtid).SendChatPresence(jid, types.ChatPresence(t.State), types.ChatPresenceMedia(t.Media))
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("Failure sending chat presence to Whatsapp servers"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("failure sending chat presence to Whatsapp servers"))
 			return
 		}
 
@@ -2588,7 +2636,7 @@ func (s *server) DownloadImage() http.HandlerFunc {
 		var imgdata []byte
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -2598,7 +2646,7 @@ func (s *server) DownloadImage() http.HandlerFunc {
 		if os.IsNotExist(err) {
 			errDir := os.MkdirAll(userDirectory, 0751)
 			if errDir != nil {
-				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Could not create user directory (%s)", userDirectory)))
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not create user directory (%s)", userDirectory)))
 				return
 			}
 		}
@@ -2607,7 +2655,7 @@ func (s *server) DownloadImage() http.HandlerFunc {
 		var t downloadImageStruct
 		err = decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
@@ -2624,10 +2672,10 @@ func (s *server) DownloadImage() http.HandlerFunc {
 		img := msg.GetImageMessage()
 
 		if img != nil {
-			imgdata, err = clientManager.GetWhatsmeowClient(txtid).Download(img)
+			imgdata, err = clientManager.GetWhatsmeowClient(txtid).Download(context.Background(), img)
 			if err != nil {
-				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to download image")
-				msg := fmt.Sprintf("Failed to download image %v", err)
+				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to download image")
+				msg := fmt.Sprintf("failed to download image %v", err)
 				s.Respond(w, r, http.StatusInternalServerError, errors.New(msg))
 				return
 			}
@@ -2667,7 +2715,7 @@ func (s *server) DownloadDocument() http.HandlerFunc {
 		var docdata []byte
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -2677,7 +2725,7 @@ func (s *server) DownloadDocument() http.HandlerFunc {
 		if os.IsNotExist(err) {
 			errDir := os.MkdirAll(userDirectory, 0751)
 			if errDir != nil {
-				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Could not create user directory (%s)", userDirectory)))
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not create user directory (%s)", userDirectory)))
 				return
 			}
 		}
@@ -2686,7 +2734,7 @@ func (s *server) DownloadDocument() http.HandlerFunc {
 		var t downloadDocumentStruct
 		err = decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
@@ -2703,10 +2751,10 @@ func (s *server) DownloadDocument() http.HandlerFunc {
 		doc := msg.GetDocumentMessage()
 
 		if doc != nil {
-			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(doc)
+			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(context.Background(), doc)
 			if err != nil {
-				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to download document")
-				msg := fmt.Sprintf("Failed to download document %v", err)
+				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to download document")
+				msg := fmt.Sprintf("failed to download document %v", err)
 				s.Respond(w, r, http.StatusInternalServerError, errors.New(msg))
 				return
 			}
@@ -2746,7 +2794,7 @@ func (s *server) DownloadVideo() http.HandlerFunc {
 		var docdata []byte
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -2756,7 +2804,7 @@ func (s *server) DownloadVideo() http.HandlerFunc {
 		if os.IsNotExist(err) {
 			errDir := os.MkdirAll(userDirectory, 0751)
 			if errDir != nil {
-				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Could not create user directory (%s)", userDirectory)))
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not create user directory (%s)", userDirectory)))
 				return
 			}
 		}
@@ -2765,7 +2813,7 @@ func (s *server) DownloadVideo() http.HandlerFunc {
 		var t downloadVideoStruct
 		err = decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
@@ -2782,10 +2830,10 @@ func (s *server) DownloadVideo() http.HandlerFunc {
 		doc := msg.GetVideoMessage()
 
 		if doc != nil {
-			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(doc)
+			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(context.Background(), doc)
 			if err != nil {
-				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to download video")
-				msg := fmt.Sprintf("Failed to download video %v", err)
+				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to download video")
+				msg := fmt.Sprintf("failed to download video %v", err)
 				s.Respond(w, r, http.StatusInternalServerError, errors.New(msg))
 				return
 			}
@@ -2825,7 +2873,7 @@ func (s *server) DownloadAudio() http.HandlerFunc {
 		var docdata []byte
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -2835,7 +2883,7 @@ func (s *server) DownloadAudio() http.HandlerFunc {
 		if os.IsNotExist(err) {
 			errDir := os.MkdirAll(userDirectory, 0751)
 			if errDir != nil {
-				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Could not create user directory (%s)", userDirectory)))
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not create user directory (%s)", userDirectory)))
 				return
 			}
 		}
@@ -2844,7 +2892,7 @@ func (s *server) DownloadAudio() http.HandlerFunc {
 		var t downloadAudioStruct
 		err = decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
@@ -2861,10 +2909,10 @@ func (s *server) DownloadAudio() http.HandlerFunc {
 		doc := msg.GetAudioMessage()
 
 		if doc != nil {
-			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(doc)
+			docdata, err = clientManager.GetWhatsmeowClient(txtid).Download(context.Background(), doc)
 			if err != nil {
-				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to download audio")
-				msg := fmt.Sprintf("Failed to download audio %v", err)
+				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to download audio")
+				msg := fmt.Sprintf("failed to download audio %v", err)
 				s.Respond(w, r, http.StatusInternalServerError, errors.New(msg))
 				return
 			}
@@ -2897,7 +2945,7 @@ func (s *server) React() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -2908,29 +2956,29 @@ func (s *server) React() http.HandlerFunc {
 		var t textStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Phone == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
 		if t.Body == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Body in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Body in Payload"))
 			return
 		}
 
 		recipient, ok := parseJID(t.Phone)
 		if !ok {
 			log.Error().Msg(fmt.Sprintf("%s", err))
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
 			return
 		}
 
 		if t.Id == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Id in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Id in Payload"))
 			return
 		} else {
 			msgid = t.Id
@@ -2961,7 +3009,7 @@ func (s *server) React() http.HandlerFunc {
 
 		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
 			return
 		}
 
@@ -2992,7 +3040,7 @@ func (s *server) MarkRead() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -3000,23 +3048,23 @@ func (s *server) MarkRead() http.HandlerFunc {
 		var t markReadStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Chat.String() == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Chat in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Chat in Payload"))
 			return
 		}
 
 		if len(t.Id) < 1 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Id in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Id in Payload"))
 			return
 		}
 
 		err = clientManager.GetWhatsmeowClient(txtid).MarkRead(t.Id, time.Now(), t.Chat, t.Sender)
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("Failure marking messages as read"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("failure marking messages as read"))
 			return
 		}
 
@@ -3043,14 +3091,14 @@ func (s *server) ListGroups() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
 		resp, err := clientManager.GetWhatsmeowClient(txtid).GetJoinedGroups()
 
 		if err != nil {
-			msg := fmt.Sprintf("Failed to get group list: %v", err)
+			msg := fmt.Sprintf("failed to get group list: %v", err)
 			log.Error().Msg(msg)
 			s.Respond(w, r, http.StatusInternalServerError, msg)
 			return
@@ -3084,20 +3132,20 @@ func (s *server) GetGroupInfo() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
 		// Get GroupJID from query parameter
 		groupJID := r.URL.Query().Get("groupJID")
 		if groupJID == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing groupJID parameter"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing groupJID parameter"))
 			return
 		}
 
 		group, ok := parseJID(groupJID)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
 			return
 		}
 
@@ -3135,14 +3183,14 @@ func (s *server) GetGroupInviteLink() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
 		// Get GroupJID from query parameter
 		groupJID := r.URL.Query().Get("groupJID")
 		if groupJID == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing groupJID parameter"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing groupJID parameter"))
 			return
 		}
 
@@ -3153,14 +3201,14 @@ func (s *server) GetGroupInviteLink() http.HandlerFunc {
 			var err error
 			reset, err = strconv.ParseBool(resetParam)
 			if err != nil {
-				s.Respond(w, r, http.StatusBadRequest, errors.New("Invalid reset parameter, must be true or false"))
+				s.Respond(w, r, http.StatusBadRequest, errors.New("invalid reset parameter, must be true or false"))
 				return
 			}
 		}
 
 		group, ok := parseJID(groupJID)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
 			return
 		}
 
@@ -3198,7 +3246,7 @@ func (s *server) GroupJoin() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -3206,25 +3254,275 @@ func (s *server) GroupJoin() http.HandlerFunc {
 		var t joinGroupStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Code == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Code in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Code in Payload"))
 			return
 		}
 
 		_, err = clientManager.GetWhatsmeowClient(txtid).JoinGroupWithLink(t.Code)
 
 		if err != nil {
-			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to join group")
-			msg := fmt.Sprintf("Failed to join group: %v", err)
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to join group")
+			msg := fmt.Sprintf("failed to join group: %v", err)
 			s.Respond(w, r, http.StatusInternalServerError, msg)
 			return
 		}
 
 		response := map[string]interface{}{"Details": "Group joined successfully"}
+		responseJson, err := json.Marshal(response)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+
+		return
+	}
+}
+
+// Create group
+func (s *server) CreateGroup() http.HandlerFunc {
+
+	type createGroupStruct struct {
+		Name         string   `json:"name"`
+		Participants []string `json:"participants"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
+			return
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var t createGroupStruct
+		err := decoder.Decode(&t)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
+			return
+		}
+
+		if t.Name == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Name in Payload"))
+			return
+		}
+
+		if len(t.Participants) < 1 {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Participants in Payload"))
+			return
+		}
+
+		// Parse participant phone numbers
+		participantJIDs := make([]types.JID, len(t.Participants))
+		var ok bool
+		for i, phone := range t.Participants {
+			participantJIDs[i], ok = parseJID(phone)
+			if !ok {
+				s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Participant Phone"))
+				return
+			}
+		}
+
+		req := whatsmeow.ReqCreateGroup{
+			Name:         t.Name,
+			Participants: participantJIDs,
+		}
+
+		groupInfo, err := clientManager.GetWhatsmeowClient(txtid).CreateGroup(req)
+
+		if err != nil {
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to create group")
+			msg := fmt.Sprintf("failed to create group: %v", err)
+			s.Respond(w, r, http.StatusInternalServerError, msg)
+			return
+		}
+
+		responseJson, err := json.Marshal(groupInfo)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+
+		return
+	}
+}
+
+// Set group locked
+func (s *server) SetGroupLocked() http.HandlerFunc {
+
+	type setGroupLockedStruct struct {
+		GroupJID string `json:"groupjid"`
+		Locked   bool   `json:"locked"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
+			return
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var t setGroupLockedStruct
+		err := decoder.Decode(&t)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
+			return
+		}
+
+		group, ok := parseJID(t.GroupJID)
+		if !ok {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
+			return
+		}
+
+		err = clientManager.GetWhatsmeowClient(txtid).SetGroupLocked(group, t.Locked)
+
+		if err != nil {
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to set group locked")
+			msg := fmt.Sprintf("failed to set group locked: %v", err)
+			s.Respond(w, r, http.StatusInternalServerError, msg)
+			return
+		}
+
+		response := map[string]interface{}{"Details": "Group Locked setting updated successfully"}
+		responseJson, err := json.Marshal(response)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+
+		return
+	}
+}
+
+// Set disappearing timer (ephemeral messages)
+func (s *server) SetDisappearingTimer() http.HandlerFunc {
+
+	type setDisappearingTimerStruct struct {
+		GroupJID string `json:"groupjid"`
+		Duration string `json:"duration"` // "24h", "7d", "90d", "off"
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
+			return
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var t setDisappearingTimerStruct
+		err := decoder.Decode(&t)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
+			return
+		}
+
+		group, ok := parseJID(t.GroupJID)
+		if !ok {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
+			return
+		}
+
+		if t.Duration == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Duration in Payload"))
+			return
+		}
+
+		var duration time.Duration
+		switch t.Duration {
+		case "24h":
+			duration = 24 * time.Hour
+		case "7d":
+			duration = 7 * 24 * time.Hour
+		case "90d":
+			duration = 90 * 24 * time.Hour
+		case "off":
+			duration = 0
+		default:
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid duration. Use: 24h, 7d, 90d, or off"))
+			return
+		}
+
+		err = clientManager.GetWhatsmeowClient(txtid).SetDisappearingTimer(group, duration)
+
+		if err != nil {
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to set disappearing timer")
+			msg := fmt.Sprintf("failed to set disappearing timer: %v", err)
+			s.Respond(w, r, http.StatusInternalServerError, msg)
+			return
+		}
+
+		response := map[string]interface{}{"Details": "Disappearing timer set successfully"}
+		responseJson, err := json.Marshal(response)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+
+		return
+	}
+}
+
+// Remove group photo
+func (s *server) RemoveGroupPhoto() http.HandlerFunc {
+
+	type removeGroupPhotoStruct struct {
+		GroupJID string `json:"groupjid"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
+			return
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var t removeGroupPhotoStruct
+		err := decoder.Decode(&t)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
+			return
+		}
+
+		group, ok := parseJID(t.GroupJID)
+		if !ok {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
+			return
+		}
+
+		_, err = clientManager.GetWhatsmeowClient(txtid).SetGroupPhoto(group, nil)
+
+		if err != nil {
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to remove group photo")
+			msg := fmt.Sprintf("failed to remove group photo: %v", err)
+			s.Respond(w, r, http.StatusInternalServerError, msg)
+			return
+		}
+
+		response := map[string]interface{}{"Details": "Group Photo removed successfully"}
 		responseJson, err := json.Marshal(response)
 
 		if err != nil {
@@ -3252,7 +3550,7 @@ func (s *server) UpdateGroupParticipants() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -3260,18 +3558,18 @@ func (s *server) UpdateGroupParticipants() http.HandlerFunc {
 		var t updateGroupParticipantsStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		group, ok := parseJID(t.GroupJID)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
 			return
 		}
 
 		if len(t.Phone) < 1 {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Phone in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 		// parse phone numbers
@@ -3279,13 +3577,13 @@ func (s *server) UpdateGroupParticipants() http.HandlerFunc {
 		for i, phone := range t.Phone {
 			phoneParsed[i], ok = parseJID(phone)
 			if !ok {
-				s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Phone"))
+				s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Phone"))
 				return
 			}
 		}
 
 		if t.Action == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Action in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Action in Payload"))
 			return
 		}
 
@@ -3302,15 +3600,15 @@ func (s *server) UpdateGroupParticipants() http.HandlerFunc {
 		case "demote":
 			action = "demote"
 		default:
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Invalid Action in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid Action in Payload"))
 			return
 		}
 
 		_, err = clientManager.GetWhatsmeowClient(txtid).UpdateGroupParticipants(group, phoneParsed, action)
 
 		if err != nil {
-			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to change participant group")
-			msg := fmt.Sprintf("Failed to change participant group: %v", err)
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to change participant group")
+			msg := fmt.Sprintf("failed to change participant group: %v", err)
 			s.Respond(w, r, http.StatusInternalServerError, msg)
 			return
 		}
@@ -3340,7 +3638,7 @@ func (s *server) GetGroupInviteInfo() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -3348,20 +3646,20 @@ func (s *server) GetGroupInviteInfo() http.HandlerFunc {
 		var t getGroupInviteInfoStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		if t.Code == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Code in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Code in Payload"))
 			return
 		}
 
 		groupInfo, err := clientManager.GetWhatsmeowClient(txtid).GetGroupInfoFromLink(t.Code)
 
 		if err != nil {
-			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to get group invite info")
-			msg := fmt.Sprintf("Failed to get group invite info: %v", err)
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to get group invite info")
+			msg := fmt.Sprintf("failed to get group invite info: %v", err)
 			s.Respond(w, r, http.StatusInternalServerError, msg)
 			return
 		}
@@ -3391,7 +3689,7 @@ func (s *server) SetGroupPhoto() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -3399,41 +3697,54 @@ func (s *server) SetGroupPhoto() http.HandlerFunc {
 		var t setGroupPhotoStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		group, ok := parseJID(t.GroupJID)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
 			return
 		}
 
 		if t.Image == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Image in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Image in Payload"))
 			return
 		}
 
 		var filedata []byte
 
-		if t.Image[0:13] == "data:image/jp" {
+		// Check if the image data starts with a valid data URL format
+		if len(t.Image) > 10 && t.Image[0:10] == "data:image" {
 			var dataURL, err = dataurl.DecodeString(t.Image)
 			if err != nil {
-				s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode base64 encoded data from payload"))
+				s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
 				return
 			} else {
 				filedata = dataURL.Data
 			}
 		} else {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Image data should start with \"data:image/jpeg;base64,\""))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("image data should start with \"data:image/\" (supported formats: jpeg, png, gif, webp)"))
+			return
+		}
+
+		// Validate that we have image data
+		if len(filedata) == 0 {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("no image data found in payload"))
+			return
+		}
+
+		// Validate JPEG format (WhatsApp requires JPEG)
+		if len(filedata) < 3 || filedata[0] != 0xFF || filedata[1] != 0xD8 || filedata[2] != 0xFF {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("image must be in JPEG format. WhatsApp only accepts JPEG images for group photos"))
 			return
 		}
 
 		picture_id, err := clientManager.GetWhatsmeowClient(txtid).SetGroupPhoto(group, filedata)
 
 		if err != nil {
-			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to set group photo")
-			msg := fmt.Sprintf("Failed to set group photo: %v", err)
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to set group photo")
+			msg := fmt.Sprintf("failed to set group photo: %v", err)
 			s.Respond(w, r, http.StatusInternalServerError, msg)
 			return
 		}
@@ -3464,7 +3775,7 @@ func (s *server) SetGroupName() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -3472,26 +3783,26 @@ func (s *server) SetGroupName() http.HandlerFunc {
 		var t setGroupNameStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		group, ok := parseJID(t.GroupJID)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
 			return
 		}
 
 		if t.Name == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Name in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Name in Payload"))
 			return
 		}
 
 		err = clientManager.GetWhatsmeowClient(txtid).SetGroupName(group, t.Name)
 
 		if err != nil {
-			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to set group name")
-			msg := fmt.Sprintf("Failed to set group name: %v", err)
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to set group name")
+			msg := fmt.Sprintf("failed to set group name: %v", err)
 			s.Respond(w, r, http.StatusInternalServerError, msg)
 			return
 		}
@@ -3522,7 +3833,7 @@ func (s *server) SetGroupTopic() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -3530,26 +3841,26 @@ func (s *server) SetGroupTopic() http.HandlerFunc {
 		var t setGroupTopicStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		group, ok := parseJID(t.GroupJID)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
 			return
 		}
 
 		if t.Topic == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Missing Topic in Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Topic in Payload"))
 			return
 		}
 
 		err = clientManager.GetWhatsmeowClient(txtid).SetGroupTopic(group, "", "", t.Topic)
 
 		if err != nil {
-			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to set group topic")
-			msg := fmt.Sprintf("Failed to set group topic: %v", err)
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to set group topic")
+			msg := fmt.Sprintf("failed to set group topic: %v", err)
 			s.Respond(w, r, http.StatusInternalServerError, msg)
 			return
 		}
@@ -3567,6 +3878,7 @@ func (s *server) SetGroupTopic() http.HandlerFunc {
 	}
 }
 
+// Leave group
 func (s *server) GroupLeave() http.HandlerFunc {
 
 	type groupLeaveStruct struct {
@@ -3578,7 +3890,7 @@ func (s *server) GroupLeave() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -3586,21 +3898,21 @@ func (s *server) GroupLeave() http.HandlerFunc {
 		var t groupLeaveStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		group, ok := parseJID(t.GroupJID)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
 			return
 		}
 
 		err = clientManager.GetWhatsmeowClient(txtid).LeaveGroup(group)
 
 		if err != nil {
-			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to leave group")
-			msg := fmt.Sprintf("Failed to leave group: %v", err)
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to leave group")
+			msg := fmt.Sprintf("failed to leave group: %v", err)
 			s.Respond(w, r, http.StatusInternalServerError, msg)
 			return
 		}
@@ -3631,7 +3943,7 @@ func (s *server) SetGroupAnnounce() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
@@ -3639,21 +3951,21 @@ func (s *server) SetGroupAnnounce() http.HandlerFunc {
 		var t setGroupAnnounceStruct
 		err := decoder.Decode(&t)
 		if err != nil {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not decode Payload"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
 
 		group, ok := parseJID(t.GroupJID)
 		if !ok {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("Could not parse Group JID"))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not parse Group JID"))
 			return
 		}
 
 		err = clientManager.GetWhatsmeowClient(txtid).SetGroupAnnounce(group, t.Announce)
 
 		if err != nil {
-			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Failed to set group announce")
-			msg := fmt.Sprintf("Failed to set group announce: %v", err)
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to set group announce")
+			msg := fmt.Sprintf("failed to set group announce: %v", err)
 			s.Respond(w, r, http.StatusInternalServerError, msg)
 			return
 		}
@@ -3683,14 +3995,14 @@ func (s *server) ListNewsletter() http.HandlerFunc {
 		txtid := r.Context().Value("userinfo").(Values).Get("Id")
 
 		if clientManager.GetWhatsmeowClient(txtid) == nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("No session"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
 			return
 		}
 
 		resp, err := clientManager.GetWhatsmeowClient(txtid).GetSubscribedNewsletters()
 
 		if err != nil {
-			msg := fmt.Sprintf("Failed to get newsletter list: %v", err)
+			msg := fmt.Sprintf("failed to get newsletter list: %v", err)
 			log.Error().Msg(msg)
 			s.Respond(w, r, http.StatusInternalServerError, msg)
 			return
@@ -3738,7 +4050,7 @@ func (s *server) ListUsers() http.HandlerFunc {
 			// Query the database to get the list of users
 			rows, err := s.db.Queryx("SELECT id, name, token, webhook, jid, qrcode, connected, expiration, events FROM users")
 			if err != nil {
-				s.Respond(w, r, http.StatusInternalServerError, errors.New("Problem accessing DB"))
+				s.Respond(w, r, http.StatusInternalServerError, errors.New("problem accessing DB"))
 				return
 			}
 			defer rows.Close()
@@ -3755,7 +4067,7 @@ func (s *server) ListUsers() http.HandlerFunc {
 
 		rows, err := s.db.Queryx(query, args...)
 		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("Problem accessing DB"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("problem accessing DB"))
 			return
 		}
 		defer rows.Close()
@@ -3767,8 +4079,8 @@ func (s *server) ListUsers() http.HandlerFunc {
 			var user usersStruct
 			err := rows.StructScan(&user)
 			if err != nil {
-				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Admin DB Error")
-				s.Respond(w, r, http.StatusInternalServerError, errors.New("Problem accessing DB"))
+				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("admin DB error")
+				s.Respond(w, r, http.StatusInternalServerError, errors.New("problem accessing DB"))
 				return
 			}
 
@@ -3793,11 +4105,36 @@ func (s *server) ListUsers() http.HandlerFunc {
 				"proxy_url":  user.ProxyURL.String,
 				"events":     user.Events,
 			}
+			// Add proxy_config
+			proxyURL := user.ProxyURL.String
+			userMap["proxy_config"] = map[string]interface{}{
+				"enabled":   proxyURL != "",
+				"proxy_url": proxyURL,
+			}
+			// Add s3_config (search S3 fields in the database)
+			var s3Enabled bool
+			var s3Endpoint, s3Region, s3Bucket, s3AccessKey, s3PublicURL, s3MediaDelivery string
+			var s3PathStyle bool
+			var s3RetentionDays int
+			err = s.db.QueryRow(`SELECT s3_enabled, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_path_style, s3_public_url, media_delivery, s3_retention_days FROM users WHERE id = $1`, user.Id).Scan(&s3Enabled, &s3Endpoint, &s3Region, &s3Bucket, &s3AccessKey, &s3PathStyle, &s3PublicURL, &s3MediaDelivery, &s3RetentionDays)
+			if err == nil {
+				userMap["s3_config"] = map[string]interface{}{
+					"enabled":        s3Enabled,
+					"endpoint":       s3Endpoint,
+					"region":         s3Region,
+					"bucket":         s3Bucket,
+					"access_key":     "***",
+					"path_style":     s3PathStyle,
+					"public_url":     s3PublicURL,
+					"media_delivery": s3MediaDelivery,
+					"retention_days": s3RetentionDays,
+				}
+			}
 			users = append(users, userMap)
 		}
 		// Check for any error that occurred during iteration
 		if err := rows.Err(); err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New("Problem accessing DB"))
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("problem accessing DB"))
 			return
 		}
 
@@ -3813,55 +4150,48 @@ func (s *server) ListUsers() http.HandlerFunc {
 	}
 }
 
+// Add user
 func (s *server) AddUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
+		type ProxyConfig struct {
+			Enabled  bool   `json:"enabled"`
+			ProxyURL string `json:"proxyURL"`
+		}
+
 		// Parse the request body
 		var user struct {
-			Name       string `json:"name"`
-			Token      string `json:"token"`
-			Webhook    string `json:"webhook,omitempty"`
-			Expiration int    `json:"expiration,omitempty"`
-			Events     string `json:"events,omitempty"`
-			ProxyURL   string `json:"proxy_url,omitempty"`
+			Name        string       `json:"name"`
+			Token       string       `json:"token"`
+			Webhook     string       `json:"webhook,omitempty"`
+			Expiration  int          `json:"expiration,omitempty"`
+			Events      string       `json:"events,omitempty"`
+			ProxyConfig *ProxyConfig `json:"proxyConfig,omitempty"`
+			S3Config    *S3Config    `json:"s3Config,omitempty"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 			s.respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{
 				"code":    http.StatusBadRequest,
-				"error":   "Invalid request payload",
+				"error":   "invalid request payload",
 				"success": false,
 			})
 			return
 		}
 
-		// Validate required fields
-		if user.Token == "" {
-			s.respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{
-				"code":    http.StatusBadRequest,
-				"error":   "Token is required",
-				"success": false,
-			})
-			return
-		}
+		log.Info().Interface("proxyConfig", user.ProxyConfig).Interface("s3Config", user.S3Config).Msg("Valores recebidos para proxyConfig e s3Config")
+		log.Debug().Interface("user", user).Msg("Valores recebidos para user")
 
-		if user.Name == "" {
-			s.respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{
-				"code":    http.StatusBadRequest,
-				"error":   "Missing required fields",
-				"success": false,
-				"details": "Required fields: name, token",
-			})
-			return
-		}
-
-		// Set defaults
+		// Set defaults only if nil
 		if user.Events == "" {
-			user.Events = "All"
+			user.Events = ""
 		}
-		if user.ProxyURL == "" {
-			user.ProxyURL = ""
+		if user.ProxyConfig == nil {
+			user.ProxyConfig = &ProxyConfig{}
+		}
+		if user.S3Config == nil {
+			user.S3Config = &S3Config{}
 		}
 		if user.Webhook == "" {
 			user.Webhook = ""
@@ -3872,7 +4202,7 @@ func (s *server) AddUser() http.HandlerFunc {
 		if err := s.db.Get(&count, "SELECT COUNT(*) FROM users WHERE token = $1", user.Token); err != nil {
 			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"code":    http.StatusInternalServerError,
-				"error":   "Database error",
+				"error":   "database error",
 				"success": false,
 			})
 			return
@@ -3880,7 +4210,7 @@ func (s *server) AddUser() http.HandlerFunc {
 		if count > 0 {
 			s.respondWithJSON(w, http.StatusConflict, map[string]interface{}{
 				"code":    http.StatusConflict,
-				"error":   "User with this token already exists",
+				"error":   "user with this token already exists",
 				"success": false,
 			})
 			return
@@ -3890,12 +4220,15 @@ func (s *server) AddUser() http.HandlerFunc {
 		eventList := strings.Split(user.Events, ",")
 		for _, event := range eventList {
 			event = strings.TrimSpace(event)
-			if !Find(messageTypes, event) {
+			if event == "" {
+				continue // allow empty
+			}
+			if !Find(supportedEventTypes, event) {
 				s.respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{
 					"code":    http.StatusBadRequest,
-					"error":   "Invalid event type",
+					"error":   "invalid event type",
 					"success": false,
-					"details": "Invalid event: " + event,
+					"details": "invalid event: " + event,
 				})
 				return
 			}
@@ -3904,41 +4237,82 @@ func (s *server) AddUser() http.HandlerFunc {
 		// Generate ID
 		id, err := GenerateRandomID()
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to generate random ID")
+			log.Error().Err(err).Msg("failed to generate random ID")
 			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"code":    http.StatusInternalServerError,
-				"error":   "Failed to generate user ID",
+				"error":   "failed to generate user ID",
 				"success": false,
 			})
 			return
 		}
 
-		// Insert user
+		// Insert user with all proxy and S3 fields
 		if _, err = s.db.Exec(
-			"INSERT INTO users (id, name, token, webhook, expiration, events, jid, qrcode, proxy_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-			id, user.Name, user.Token, user.Webhook, user.Expiration, user.Events, "", "", user.ProxyURL,
+			"INSERT INTO users (id, name, token, webhook, expiration, events, jid, qrcode, proxy_url, s3_enabled, s3_endpoint, s3_region, s3_bucket, s3_access_key, s3_secret_key, s3_path_style, s3_public_url, media_delivery, s3_retention_days) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)",
+			id, user.Name, user.Token, user.Webhook, user.Expiration, user.Events, "", "", user.ProxyConfig.ProxyURL,
+			user.S3Config.Enabled, user.S3Config.Endpoint, user.S3Config.Region, user.S3Config.Bucket, user.S3Config.AccessKey, user.S3Config.SecretKey, user.S3Config.PathStyle, user.S3Config.PublicURL, user.S3Config.MediaDelivery, user.S3Config.RetentionDays,
 		); err != nil {
-			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Admin DB Error")
+			log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("admin DB error")
 			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"code":    http.StatusInternalServerError,
-				"error":   "Database error",
+				"error":   "database error",
 				"success": false,
 			})
 			return
 		}
 
-		// Success response
+		// Initialize S3Manager if necessary
+		if user.S3Config != nil && user.S3Config.Enabled {
+			s3Config := &S3Config{
+				Enabled:       user.S3Config.Enabled,
+				Endpoint:      user.S3Config.Endpoint,
+				Region:        user.S3Config.Region,
+				Bucket:        user.S3Config.Bucket,
+				AccessKey:     user.S3Config.AccessKey,
+				SecretKey:     user.S3Config.SecretKey,
+				PathStyle:     user.S3Config.PathStyle,
+				PublicURL:     user.S3Config.PublicURL,
+				MediaDelivery: user.S3Config.MediaDelivery,
+				RetentionDays: user.S3Config.RetentionDays,
+			}
+			_ = GetS3Manager().InitializeS3Client(id, s3Config)
+		}
+
+		// Build response like GET /admin/users
+		proxyConfig := map[string]interface{}{
+			"enabled":   user.ProxyConfig.Enabled,
+			"proxy_url": user.ProxyConfig.ProxyURL,
+		}
+		s3Config := map[string]interface{}{
+			"enabled":        user.S3Config.Enabled,
+			"endpoint":       user.S3Config.Endpoint,
+			"region":         user.S3Config.Region,
+			"bucket":         user.S3Config.Bucket,
+			"access_key":     "***",
+			"path_style":     user.S3Config.PathStyle,
+			"public_url":     user.S3Config.PublicURL,
+			"media_delivery": user.S3Config.MediaDelivery,
+			"retention_days": user.S3Config.RetentionDays,
+		}
+		userMap := map[string]interface{}{
+			"id":           id,
+			"name":         user.Name,
+			"token":        user.Token,
+			"webhook":      user.Webhook,
+			"expiration":   user.Expiration,
+			"events":       user.Events,
+			"proxy_config": proxyConfig,
+			"s3_config":    s3Config,
+		}
 		s.respondWithJSON(w, http.StatusCreated, map[string]interface{}{
-			"code": http.StatusCreated,
-			"data": map[string]interface{}{
-				"id":   id,
-				"name": user.Name,
-			},
+			"code":    http.StatusCreated,
+			"data":    userMap,
 			"success": true,
 		})
 	}
 }
 
+// Delete user
 func (s *server) DeleteUser() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 
@@ -3951,7 +4325,7 @@ func (s *server) DeleteUser() http.HandlerFunc {
 		if err != nil {
 			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"code":    http.StatusInternalServerError,
-				"error":   "Database error",
+				"error":   "database error",
 				"success": false,
 			})
 			return
@@ -3970,7 +4344,7 @@ func (s *server) DeleteUser() http.HandlerFunc {
 		if rowsAffected == 0 {
 			s.respondWithJSON(w, http.StatusNotFound, map[string]interface{}{
 				"code":    http.StatusNotFound,
-				"error":   "User not found",
+				"error":   "user not found",
 				"success": false,
 				"details": fmt.Sprintf("No user found with ID: %s", userID),
 			})
@@ -3980,11 +4354,12 @@ func (s *server) DeleteUser() http.HandlerFunc {
 			"code":    http.StatusOK,
 			"data":    map[string]string{"id": userID},
 			"success": true,
-			"details": "User deleted successfully",
+			"details": "user deleted successfully",
 		})
 	}
 }
 
+// Delete user complete
 func (s *server) DeleteUserComplete() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -3996,7 +4371,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 		if id == "" {
 			s.respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{
 				"code":    http.StatusBadRequest,
-				"error":   "Missing ID",
+				"error":   "missing ID",
 				"success": false,
 			})
 			return
@@ -4008,16 +4383,16 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 		if err != nil {
 			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"code":    http.StatusInternalServerError,
-				"error":   "Database error",
+				"error":   "database error",
 				"success": false,
-				"details": "Problem checking user existence",
+				"details": "problem checking user existence",
 			})
 			return
 		}
 		if !exists {
 			s.respondWithJSON(w, http.StatusNotFound, map[string]interface{}{
 				"code":    http.StatusNotFound,
-				"error":   "User not found",
+				"error":   "user not found",
 				"success": false,
 				"details": fmt.Sprintf("No user found with ID: %s", id),
 			})
@@ -4028,7 +4403,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 		var uname, jid, token string
 		err = s.db.QueryRow("SELECT name, jid, token FROM users WHERE id = $1", id).Scan(&uname, &jid, &token)
 		if err != nil {
-			log.Error().Err(err).Str("id", id).Msg("Problem retrieving user information")
+			log.Error().Err(err).Str("id", id).Msg("problem retrieving user information")
 			// Continue anyway since we have the ID
 		}
 
@@ -4036,7 +4411,7 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 		if client := clientManager.GetWhatsmeowClient(id); client != nil {
 			if client.IsConnected() {
 				log.Info().Str("id", id).Msg("Logging out user")
-				client.Logout()
+				client.Logout(context.Background())
 			}
 			log.Info().Str("id", id).Msg("Disconnecting from WhatsApp")
 			client.Disconnect()
@@ -4047,29 +4422,44 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 		if err != nil {
 			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{
 				"code":    http.StatusInternalServerError,
-				"error":   "Database error",
+				"error":   "database error",
 				"success": false,
-				"details": "Failed to delete user from database",
+				"details": "failed to delete user from database",
 			})
 			return
 		}
 
 		// 3. Cleanup from memory
 		clientManager.DeleteWhatsmeowClient(id)
+		clientManager.DeleteMyClient(id)
 		clientManager.DeleteHTTPClient(id)
 		userinfocache.Delete(token)
 
 		// 4. Remove media files
 		userDirectory := filepath.Join(s.exPath, "files", id)
 		if stat, err := os.Stat(userDirectory); err == nil && stat.IsDir() {
-			log.Info().Str("dir", userDirectory).Msg("Deleting media and history files from disk")
+			log.Info().Str("dir", userDirectory).Msg("deleting media and history files from disk")
 			err = os.RemoveAll(userDirectory)
 			if err != nil {
-				log.Error().Err(err).Str("dir", userDirectory).Msg("Erro ao remover diretório de mídia")
+				log.Error().Err(err).Str("dir", userDirectory).Msg("error removing media directory")
 			}
 		}
 
-		log.Info().Str("id", id).Str("name", uname).Str("jid", jid).Msg("User deleted successfully")
+		// 5. Remove files from S3 (if enabled)
+		var s3Enabled bool
+		err = s.db.QueryRow("SELECT s3_enabled FROM users WHERE id = $1", id).Scan(&s3Enabled)
+		if err == nil && s3Enabled {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			errS3 := GetS3Manager().DeleteAllUserObjects(ctx, id)
+			if errS3 != nil {
+				log.Error().Err(errS3).Str("id", id).Msg("error removing user files from S3")
+			} else {
+				log.Info().Str("id", id).Msg("user files from S3 removed successfully")
+			}
+		}
+
+		log.Info().Str("id", id).Str("name", uname).Str("jid", jid).Msg("user deleted successfully")
 
 		// Success response
 		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{
@@ -4080,11 +4470,12 @@ func (s *server) DeleteUserComplete() http.HandlerFunc {
 				"jid":  jid,
 			},
 			"success": true,
-			"details": "User instance removed completely",
+			"details": "user instance removed completely",
 		})
 	}
 }
 
+// Respond to client
 func (s *server) Respond(w http.ResponseWriter, r *http.Request, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -4104,7 +4495,7 @@ func (s *server) Respond(w http.ResponseWriter, r *http.Request, status int, dat
 			if err := json.Unmarshal([]byte(data.(string)), &mySlice); err == nil {
 				dataenvelope["data"] = mySlice
 			} else {
-				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("Error unmarshalling JSON")
+				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("error unmarshalling JSON")
 			}
 		}
 		dataenvelope["success"] = true
@@ -4115,28 +4506,30 @@ func (s *server) Respond(w http.ResponseWriter, r *http.Request, status int, dat
 	}
 }
 
+// Validate message fields
 func validateMessageFields(phone string, stanzaid *string, participant *string) (types.JID, error) {
 
 	recipient, ok := parseJID(phone)
 	if !ok {
-		return types.NewJID("", types.DefaultUserServer), errors.New("Could not parse Phone")
+		return types.NewJID("", types.DefaultUserServer), errors.New("could not parse Phone")
 	}
 
 	if stanzaid != nil {
 		if participant == nil {
-			return types.NewJID("", types.DefaultUserServer), errors.New("Missing Participant in ContextInfo")
+			return types.NewJID("", types.DefaultUserServer), errors.New("missing Participant in ContextInfo")
 		}
 	}
 
 	if participant != nil {
 		if stanzaid == nil {
-			return types.NewJID("", types.DefaultUserServer), errors.New("Missing StanzaID in ContextInfo")
+			return types.NewJID("", types.DefaultUserServer), errors.New("missing StanzaID in ContextInfo")
 		}
 	}
 
 	return recipient, nil
 }
 
+// Set proxy
 func (s *server) SetProxy() http.HandlerFunc {
 	type proxyStruct struct {
 		ProxyURL string `json:"proxy_url"` // Format: "socks5://user:pass@host:port" or "http://host:port"
@@ -4208,6 +4601,269 @@ func (s *server) SetProxy() http.HandlerFunc {
 			"Details":  "Proxy configured successfully",
 			"ProxyURL": t.ProxyURL,
 		}
+		responseJson, err := json.Marshal(response)
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+	}
+}
+
+// Configure S3
+func (s *server) ConfigureS3() http.HandlerFunc {
+	type s3ConfigStruct struct {
+		Enabled       bool   `json:"enabled"`
+		Endpoint      string `json:"endpoint"`
+		Region        string `json:"region"`
+		Bucket        string `json:"bucket"`
+		AccessKey     string `json:"access_key"`
+		SecretKey     string `json:"secret_key"`
+		PathStyle     bool   `json:"path_style"`
+		PublicURL     string `json:"public_url"`
+		MediaDelivery string `json:"media_delivery"`
+		RetentionDays int    `json:"retention_days"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		decoder := json.NewDecoder(r.Body)
+		var t s3ConfigStruct
+		err := decoder.Decode(&t)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode payload"))
+			return
+		}
+
+		// Validate media_delivery
+		if t.MediaDelivery != "" && t.MediaDelivery != "base64" && t.MediaDelivery != "s3" && t.MediaDelivery != "both" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("media_delivery must be 'base64', 's3', or 'both'"))
+			return
+		}
+
+		if t.MediaDelivery == "" {
+			t.MediaDelivery = "base64"
+		}
+
+		// Update database
+		_, err = s.db.Exec(`
+			UPDATE users SET 
+				s3_enabled = $1,
+				s3_endpoint = $2,
+				s3_region = $3,
+				s3_bucket = $4,
+				s3_access_key = $5,
+				s3_secret_key = $6,
+				s3_path_style = $7,
+				s3_public_url = $8,
+				media_delivery = $9,
+				s3_retention_days = $10
+			WHERE id = $11`,
+			t.Enabled, t.Endpoint, t.Region, t.Bucket, t.AccessKey, t.SecretKey,
+			t.PathStyle, t.PublicURL, t.MediaDelivery, t.RetentionDays, txtid)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("failed to save S3 configuration"))
+			return
+		}
+
+		// Initialize S3 client if enabled
+		if t.Enabled {
+			s3Config := &S3Config{
+				Enabled:       t.Enabled,
+				Endpoint:      t.Endpoint,
+				Region:        t.Region,
+				Bucket:        t.Bucket,
+				AccessKey:     t.AccessKey,
+				SecretKey:     t.SecretKey,
+				PathStyle:     t.PathStyle,
+				PublicURL:     t.PublicURL,
+				RetentionDays: t.RetentionDays,
+			}
+
+			err = GetS3Manager().InitializeS3Client(txtid, s3Config)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to initialize S3 client: %v", err)))
+				return
+			}
+		} else {
+			GetS3Manager().RemoveClient(txtid)
+		}
+
+		response := map[string]interface{}{
+			"Details": "S3 configuration saved successfully",
+			"Enabled": t.Enabled,
+		}
+		responseJson, err := json.Marshal(response)
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+	}
+}
+
+// Get S3 Configuration
+func (s *server) GetS3Config() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		var config struct {
+			Enabled       bool   `json:"enabled"`
+			Endpoint      string `json:"endpoint"`
+			Region        string `json:"region"`
+			Bucket        string `json:"bucket"`
+			AccessKey     string `json:"access_key"`
+			PathStyle     bool   `json:"path_style"`
+			PublicURL     string `json:"public_url"`
+			MediaDelivery string `json:"media_delivery"`
+			RetentionDays int    `json:"retention_days"`
+		}
+
+		err := s.db.Get(&config, `
+			SELECT 
+				s3_enabled as enabled,
+				s3_endpoint as endpoint,
+				s3_region as region,
+				s3_bucket as bucket,
+				s3_access_key as access_key,
+				s3_path_style as path_style,
+				s3_public_url as public_url,
+				media_delivery,
+				s3_retention_days as retention_days
+			FROM users WHERE id = $1`, txtid)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("failed to get S3 configuration"))
+			return
+		}
+
+		// Don't return secret key for security
+		config.AccessKey = "***" // Mask access key
+
+		responseJson, err := json.Marshal(config)
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+	}
+}
+
+// Test S3 Connection
+func (s *server) TestS3Connection() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		// Get S3 config from database
+		var config struct {
+			Enabled       bool
+			Endpoint      string
+			Region        string
+			Bucket        string
+			AccessKey     string
+			SecretKey     string
+			PathStyle     bool
+			PublicURL     string
+			RetentionDays int
+		}
+
+		err := s.db.Get(&config, `
+			SELECT 
+				s3_enabled as enabled,
+				s3_endpoint as endpoint,
+				s3_region as region,
+				s3_bucket as bucket,
+				s3_access_key as accesskey,
+				s3_secret_key as secretkey,
+				s3_path_style as pathstyle,
+				s3_public_url as publicurl,
+				s3_retention_days as retentiondays
+			FROM users WHERE id = $1`, txtid)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("failed to get S3 configuration"))
+			return
+		}
+
+		if !config.Enabled {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("S3 is not enabled for this user"))
+			return
+		}
+
+		// Initialize S3 client
+		s3Config := &S3Config{
+			Enabled:       config.Enabled,
+			Endpoint:      config.Endpoint,
+			Region:        config.Region,
+			Bucket:        config.Bucket,
+			AccessKey:     config.AccessKey,
+			SecretKey:     config.SecretKey,
+			PathStyle:     config.PathStyle,
+			PublicURL:     config.PublicURL,
+			RetentionDays: config.RetentionDays,
+		}
+
+		err = GetS3Manager().InitializeS3Client(txtid, s3Config)
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to initialize S3 client: %v", err)))
+			return
+		}
+
+		// Test connection
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		err = GetS3Manager().TestConnection(ctx, txtid)
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("S3 connection test failed: %v", err)))
+			return
+		}
+
+		response := map[string]interface{}{
+			"Details": "S3 connection test successful",
+			"Bucket":  config.Bucket,
+			"Region":  config.Region,
+		}
+		responseJson, err := json.Marshal(response)
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+	}
+}
+
+// Delete S3 Configuration
+func (s *server) DeleteS3Config() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		// Update database to remove S3 configuration
+		_, err := s.db.Exec(`
+			UPDATE users SET 
+				s3_enabled = false,
+				s3_endpoint = '',
+				s3_region = '',
+				s3_bucket = '',
+				s3_access_key = '',
+				s3_secret_key = '',
+				s3_path_style = true,
+				s3_public_url = '',
+				media_delivery = 'base64',
+				s3_retention_days = 30
+			WHERE id = $1`, txtid)
+
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("failed to delete S3 configuration"))
+			return
+		}
+
+		// Remove S3 client
+		GetS3Manager().RemoveClient(txtid)
+
+		response := map[string]interface{}{"Details": "S3 configuration deleted successfully"}
 		responseJson, err := json.Marshal(response)
 		if err != nil {
 			s.Respond(w, r, http.StatusInternalServerError, err)

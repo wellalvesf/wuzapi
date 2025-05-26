@@ -13,9 +13,7 @@ services:
       - DB_HOST=db
       - DB_PORT=5432
       - TZ=America/Sao_Paulo
-    volumes:
-      - ./dbdata:/app/dbdata
-      - ./files:/app/files
+      - WEBHOOK_FORMAT=json
     depends_on:
       db:
         condition: service_healthy
@@ -47,6 +45,4 @@ networks:
     driver: bridge
 
 volumes:
-  dbdata:
-  files:
   db_data:

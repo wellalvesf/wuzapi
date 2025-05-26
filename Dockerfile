@@ -32,6 +32,4 @@ RUN chmod +x /app/wuzapi
 RUN chmod -R 755 /app
 RUN chown -R root:root /app
 
-VOLUME [ "/app/dbdata", "/app/files" ]
-
 ENTRYPOINT ["/app/wuzapi", "--logtype=console", "--color=true"]

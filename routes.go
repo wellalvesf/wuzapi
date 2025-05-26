@@ -85,6 +85,11 @@ func (s *server) routes() {
 
 	s.router.Handle("/session/proxy", c.Then(s.SetProxy())).Methods("POST")
 
+	s.router.Handle("/session/s3/config", c.Then(s.ConfigureS3())).Methods("POST")
+	s.router.Handle("/session/s3/config", c.Then(s.GetS3Config())).Methods("GET")
+	s.router.Handle("/session/s3/config", c.Then(s.DeleteS3Config())).Methods("DELETE")
+	s.router.Handle("/session/s3/test", c.Then(s.TestS3Connection())).Methods("POST")
+
 	s.router.Handle("/chat/send/text", c.Then(s.SendMessage())).Methods("POST")
 	s.router.Handle("/chat/delete", c.Then(s.DeleteMessage())).Methods("POST")
 	s.router.Handle("/chat/send/image", c.Then(s.SendImage())).Methods("POST")
@@ -114,14 +119,18 @@ func (s *server) routes() {
 	s.router.Handle("/chat/downloadaudio", c.Then(s.DownloadAudio())).Methods("POST")
 	s.router.Handle("/chat/downloaddocument", c.Then(s.DownloadDocument())).Methods("POST")
 
+	s.router.Handle("/group/create", c.Then(s.CreateGroup())).Methods("POST")
 	s.router.Handle("/group/list", c.Then(s.ListGroups())).Methods("GET")
 	s.router.Handle("/group/info", c.Then(s.GetGroupInfo())).Methods("GET")
 	s.router.Handle("/group/invitelink", c.Then(s.GetGroupInviteLink())).Methods("GET")
 	s.router.Handle("/group/photo", c.Then(s.SetGroupPhoto())).Methods("POST")
+	s.router.Handle("/group/photo/remove", c.Then(s.RemoveGroupPhoto())).Methods("POST")
 	s.router.Handle("/group/leave", c.Then(s.GroupLeave())).Methods("POST")
 	s.router.Handle("/group/name", c.Then(s.SetGroupName())).Methods("POST")
 	s.router.Handle("/group/topic", c.Then(s.SetGroupTopic())).Methods("POST")
 	s.router.Handle("/group/announce", c.Then(s.SetGroupAnnounce())).Methods("POST")
+	s.router.Handle("/group/locked", c.Then(s.SetGroupLocked())).Methods("POST")
+	s.router.Handle("/group/ephemeral", c.Then(s.SetDisappearingTimer())).Methods("POST")
 	s.router.Handle("/group/join", c.Then(s.GroupJoin())).Methods("POST")
 	s.router.Handle("/group/inviteinfo", c.Then(s.GetGroupInviteInfo())).Methods("POST")
 	s.router.Handle("/group/updateparticipants", c.Then(s.UpdateGroupParticipants())).Methods("POST")

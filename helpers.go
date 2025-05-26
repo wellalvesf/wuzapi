@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"net/http"
+	"os"
+
+	"github.com/jmoiron/sqlx"
+	"github.com/rs/zerolog/log"
 )
 
 func Find(slice []string, val string) bool {
@@ -35,9 +39,33 @@ func callHook(myurl string, payload map[string]string, id string) {
 
 	client := clientManager.GetHTTPClient(id)
 
-	_, err := client.R().SetFormData(payload).Post(myurl)
-	if err != nil {
-		log.Debug().Str("error", err.Error())
+	format := os.Getenv("WEBHOOK_FORMAT")
+	if format == "json" {
+		// Send as pure JSON
+		// The original payload is a map[string]string, but we want to send the postmap (map[string]interface{})
+		// So we try to decode the jsonData field if it exists, otherwise we send the original payload
+		var body interface{} = payload
+		if jsonStr, ok := payload["jsonData"]; ok {
+			var postmap map[string]interface{}
+			err := json.Unmarshal([]byte(jsonStr), &postmap)
+			if err == nil {
+				postmap["token"] = payload["token"]
+				body = postmap
+			}
+		}
+		_, err := client.R().
+			SetHeader("Content-Type", "application/json").
+			SetBody(body).
+			Post(myurl)
+		if err != nil {
+			log.Debug().Str("error", err.Error())
+		}
+	} else {
+		// Default: send as form-urlencoded
+		_, err := client.R().SetFormData(payload).Post(myurl)
+		if err != nil {
+			log.Debug().Str("error", err.Error())
+		}
 	}
 }
 
@@ -81,4 +109,42 @@ func (s *server) respondWithJSON(w http.ResponseWriter, statusCode int, payload 
 		log.Error().Err(err).Msg("Failed to encode JSON response")
 		w.WriteHeader(http.StatusInternalServerError)
 	}
+}
+
+// ProcessOutgoingMedia handles media processing for outgoing messages with S3 support
+func ProcessOutgoingMedia(userID string, contactJID string, messageID string, data []byte, mimeType string, fileName string, db *sqlx.DB) (map[string]interface{}, error) {
+	// Check if S3 is enabled for this user
+	var s3Config struct {
+		Enabled       bool   `db:"s3_enabled"`
+		MediaDelivery string `db:"media_delivery"`
+	}
+	err := db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", userID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get S3 config")
+		s3Config.Enabled = false
+		s3Config.MediaDelivery = "base64"
+	}
+
+	// Process S3 upload if enabled
+	if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+		// Process S3 upload (outgoing messages are always in outbox)
+		s3Data, err := GetS3Manager().ProcessMediaForS3(
+			context.Background(),
+			userID,
+			contactJID,
+			messageID,
+			data,
+			mimeType,
+			fileName,
+			false, // isIncoming = false for sent messages
+		)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to upload media to S3")
+			// Continue even if S3 upload fails
+		} else {
+			return s3Data, nil
+		}
+	}
+
+	return nil, nil
 }

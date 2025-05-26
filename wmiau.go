@@ -77,25 +77,71 @@ func (s *server) connectOnStartup() {
 			eventarray := strings.Split(events, ",")
 
 			var subscribedEvents []string
-			if len(eventarray) < 1 {
-				if !Find(subscribedEvents, "All") {
-					subscribedEvents = append(subscribedEvents, "All")
-				}
+			if len(eventarray) == 1 && eventarray[0] == "" {
+				subscribedEvents = []string{}
 			} else {
 				for _, arg := range eventarray {
-					if !Find(messageTypes, arg) {
-						log.Warn().Str("Type", arg).Msg("Message type discarded")
+					if !Find(supportedEventTypes, arg) {
+						log.Warn().Str("Type", arg).Msg("Event type discarded")
 						continue
 					}
 					if !Find(subscribedEvents, arg) {
 						subscribedEvents = append(subscribedEvents, arg)
 					}
 				}
+
 			}
 			eventstring := strings.Join(subscribedEvents, ",")
 			log.Info().Str("events", eventstring).Str("jid", jid).Msg("Attempt to connect")
 			killchannel[txtid] = make(chan bool)
 			go s.startClient(txtid, jid, token, subscribedEvents)
+
+			// Initialize S3 client if configured
+			go func(userID string) {
+				var s3Config struct {
+					Enabled       bool   `db:"s3_enabled"`
+					Endpoint      string `db:"s3_endpoint"`
+					Region        string `db:"s3_region"`
+					Bucket        string `db:"s3_bucket"`
+					AccessKey     string `db:"s3_access_key"`
+					SecretKey     string `db:"s3_secret_key"`
+					PathStyle     bool   `db:"s3_path_style"`
+					PublicURL     string `db:"s3_public_url"`
+					RetentionDays int    `db:"s3_retention_days"`
+				}
+
+				err := s.db.Get(&s3Config, `
+					SELECT s3_enabled, s3_endpoint, s3_region, s3_bucket, 
+						   s3_access_key, s3_secret_key, s3_path_style, 
+						   s3_public_url, s3_retention_days
+					FROM users WHERE id = $1`, userID)
+
+				if err != nil {
+					log.Error().Err(err).Str("userID", userID).Msg("Failed to get S3 config")
+					return
+				}
+
+				if s3Config.Enabled {
+					config := &S3Config{
+						Enabled:       s3Config.Enabled,
+						Endpoint:      s3Config.Endpoint,
+						Region:        s3Config.Region,
+						Bucket:        s3Config.Bucket,
+						AccessKey:     s3Config.AccessKey,
+						SecretKey:     s3Config.SecretKey,
+						PathStyle:     s3Config.PathStyle,
+						PublicURL:     s3Config.PublicURL,
+						RetentionDays: s3Config.RetentionDays,
+					}
+
+					err = GetS3Manager().InitializeS3Client(userID, config)
+					if err != nil {
+						log.Error().Err(err).Str("userID", userID).Msg("Failed to initialize S3 client on startup")
+					} else {
+						log.Info().Str("userID", userID).Msg("S3 client initialized on startup")
+					}
+				}
+			}(txtid)
 		}
 	}
 	err = rows.Err()
@@ -132,7 +178,7 @@ func (s *server) startClient(userID string, textjid string, token string, subscr
 	// First handle the device store initialization
 	if textjid != "" {
 		jid, _ := parseJID(textjid)
-		deviceStore, err = container.GetDevice(jid)
+		deviceStore, err = container.GetDevice(context.Background(), jid)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to get device")
 			deviceStore = container.NewDevice()
@@ -159,14 +205,9 @@ func (s *server) startClient(userID string, textjid string, token string, subscr
 
 	// Now we can use the client with the manager
 	clientManager.SetWhatsmeowClient(userID, client)
-
-	// When deleting clients
-	// clientManager.DeleteWhatsmeowClient(userID)
-	// clientManager.DeleteHTTPClient(userID)
-
 	if textjid != "" {
 		jid, _ := parseJID(textjid)
-		deviceStore, err = container.GetDevice(jid)
+		deviceStore, err = container.GetDevice(context.Background(), jid)
 		if err != nil {
 			panic(err)
 		}
@@ -181,6 +222,9 @@ func (s *server) startClient(userID string, textjid string, token string, subscr
 	clientManager.SetWhatsmeowClient(userID, client)
 	mycli := MyClient{client, 1, userID, token, subscriptions, s.db}
 	mycli.eventHandlerID = mycli.WAClient.AddEventHandler(mycli.myEventHandler)
+
+	// CORREÇÃO: Armazenar o MyClient no clientManager
+	clientManager.SetMyClient(userID, &mycli)
 
 	httpClient := resty.New()
 	httpClient.SetRedirectPolicy(resty.FlexibleRedirectPolicy(15))
@@ -259,6 +303,8 @@ func (s *server) startClient(userID string, textjid string, token string, subscr
 					}
 					log.Warn().Msg("QR timeout killing channel")
 					clientManager.DeleteWhatsmeowClient(userID)
+					clientManager.DeleteMyClient(userID)
+					clientManager.DeleteHTTPClient(userID)
 					killchannel[userID] <- true
 				} else if evt.Event == "success" {
 					log.Info().Msg("QR pairing ok!")
@@ -295,6 +341,8 @@ func (s *server) startClient(userID string, textjid string, token string, subscr
 			log.Info().Str("userid", userID).Msg("Received kill signal")
 			client.Disconnect()
 			clientManager.DeleteWhatsmeowClient(userID)
+			clientManager.DeleteMyClient(userID)
+			clientManager.DeleteHTTPClient(userID)
 			sqlStmt := `UPDATE users SET qrcode='', connected=0 WHERE id=$1`
 			_, err := s.db.Exec(sqlStmt, "", userID)
 			if err != nil {
@@ -407,7 +455,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Download the image
-				data, err := mycli.WAClient.Download(img)
+				data, err := mycli.WAClient.Download(context.Background(), img)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to download image")
 					return
@@ -424,20 +472,61 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Convert the image to base64
-				base64String, mimeType, err := fileToBase64(tmpPath)
+				// Check if S3 is enabled for this user
+				var s3Config struct {
+					Enabled       bool   `db:"s3_enabled"`
+					MediaDelivery string `db:"media_delivery"`
+				}
+				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to convert image to base64")
-					return
+					log.Error().Err(err).Msg("Failed to get S3 config")
+					s3Config.Enabled = false
+					s3Config.MediaDelivery = "base64"
 				}
 
-				// Add the base64 string and other details to the postmap
-				postmap["base64"] = base64String
-				postmap["mimeType"] = mimeType
-				postmap["fileName"] = filepath.Base(tmpPath)
+				// Process S3 upload if enabled
+				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+					// Get sender JID for inbox/outbox determination
+					isIncoming := evt.Info.IsFromMe == false
+					contactJID := evt.Info.Sender.String()
+					if evt.Info.IsGroup {
+						contactJID = evt.Info.Chat.String()
+					}
+
+					// Process S3 upload
+					s3Data, err := GetS3Manager().ProcessMediaForS3(
+						context.Background(),
+						txtid,
+						contactJID,
+						evt.Info.ID,
+						data,
+						img.GetMimetype(),
+						filepath.Base(tmpPath),
+						isIncoming,
+					)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to upload image to S3")
+					} else {
+						postmap["s3"] = s3Data
+					}
+				}
+
+				// Convert the image to base64 if needed
+				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+					base64String, mimeType, err := fileToBase64(tmpPath)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to convert image to base64")
+						return
+					}
+
+					// Add the base64 string and other details to the postmap
+					postmap["base64"] = base64String
+					postmap["mimeType"] = mimeType
+					postmap["fileName"] = filepath.Base(tmpPath)
+				}
 
 				// Log the successful conversion
-				log.Info().Str("path", tmpPath).Msg("Image converted to base64")
+				log.Info().Str("path", tmpPath).Msg("Image processed")
 
 				// Delete the temporary file
 				err = os.Remove(tmpPath)
@@ -460,7 +549,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Download the audio
-				data, err := mycli.WAClient.Download(audio)
+				data, err := mycli.WAClient.Download(context.Background(), audio)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to download audio")
 					return
@@ -483,20 +572,61 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Convert the audio to base64
-				base64String, mimeType, err := fileToBase64(tmpPath)
+				// Check if S3 is enabled for this user
+				var s3Config struct {
+					Enabled       bool   `db:"s3_enabled"`
+					MediaDelivery string `db:"media_delivery"`
+				}
+				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to convert audio to base64")
-					return
+					log.Error().Err(err).Msg("Failed to get S3 config")
+					s3Config.Enabled = false
+					s3Config.MediaDelivery = "base64"
 				}
 
-				// Add the base64 string and other details to the postmap
-				postmap["base64"] = base64String
-				postmap["mimeType"] = mimeType
-				postmap["fileName"] = filepath.Base(tmpPath)
+				// Process S3 upload if enabled
+				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+					// Get sender JID for inbox/outbox determination
+					isIncoming := evt.Info.IsFromMe == false
+					contactJID := evt.Info.Sender.String()
+					if evt.Info.IsGroup {
+						contactJID = evt.Info.Chat.String()
+					}
+
+					// Process S3 upload
+					s3Data, err := GetS3Manager().ProcessMediaForS3(
+						context.Background(),
+						txtid,
+						contactJID,
+						evt.Info.ID,
+						data,
+						audio.GetMimetype(),
+						filepath.Base(tmpPath),
+						isIncoming,
+					)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to upload audio to S3")
+					} else {
+						postmap["s3"] = s3Data
+					}
+				}
+
+				// Convert the audio to base64 if needed
+				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+					base64String, mimeType, err := fileToBase64(tmpPath)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to convert audio to base64")
+						return
+					}
+
+					// Add the base64 string and other details to the postmap
+					postmap["base64"] = base64String
+					postmap["mimeType"] = mimeType
+					postmap["fileName"] = filepath.Base(tmpPath)
+				}
 
 				// Log the successful conversion
-				log.Info().Str("path", tmpPath).Msg("Audio converted to base64")
+				log.Info().Str("path", tmpPath).Msg("Audio processed")
 
 				// Delete the temporary file
 				err = os.Remove(tmpPath)
@@ -519,7 +649,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Download the document
-				data, err := mycli.WAClient.Download(document)
+				data, err := mycli.WAClient.Download(context.Background(), document)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to download document")
 					return
@@ -547,20 +677,61 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Convert the document to base64
-				base64String, mimeType, err := fileToBase64(tmpPath)
+				// Check if S3 is enabled for this user
+				var s3Config struct {
+					Enabled       bool   `db:"s3_enabled"`
+					MediaDelivery string `db:"media_delivery"`
+				}
+				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to convert document to base64")
-					return
+					log.Error().Err(err).Msg("Failed to get S3 config")
+					s3Config.Enabled = false
+					s3Config.MediaDelivery = "base64"
 				}
 
-				// Add the base64 string and other details to the postmap
-				postmap["base64"] = base64String
-				postmap["mimeType"] = mimeType
-				postmap["fileName"] = filepath.Base(tmpPath)
+				// Process S3 upload if enabled
+				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+					// Get sender JID for inbox/outbox determination
+					isIncoming := evt.Info.IsFromMe == false
+					contactJID := evt.Info.Sender.String()
+					if evt.Info.IsGroup {
+						contactJID = evt.Info.Chat.String()
+					}
+
+					// Process S3 upload
+					s3Data, err := GetS3Manager().ProcessMediaForS3(
+						context.Background(),
+						txtid,
+						contactJID,
+						evt.Info.ID,
+						data,
+						document.GetMimetype(),
+						filepath.Base(tmpPath),
+						isIncoming,
+					)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to upload document to S3")
+					} else {
+						postmap["s3"] = s3Data
+					}
+				}
+
+				// Convert the document to base64 if needed
+				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+					base64String, mimeType, err := fileToBase64(tmpPath)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to convert document to base64")
+						return
+					}
+
+					// Add the base64 string and other details to the postmap
+					postmap["base64"] = base64String
+					postmap["mimeType"] = mimeType
+					postmap["fileName"] = filepath.Base(tmpPath)
+				}
 
 				// Log the successful conversion
-				log.Info().Str("path", tmpPath).Msg("Document converted to base64")
+				log.Info().Str("path", tmpPath).Msg("Document processed")
 
 				// Delete the temporary file
 				err = os.Remove(tmpPath)
@@ -583,7 +754,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Download the video
-				data, err := mycli.WAClient.Download(video)
+				data, err := mycli.WAClient.Download(context.Background(), video)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to download video")
 					return
@@ -600,20 +771,61 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Convert the video to base64
-				base64String, mimeType, err := fileToBase64(tmpPath)
+				// Check if S3 is enabled for this user
+				var s3Config struct {
+					Enabled       bool   `db:"s3_enabled"`
+					MediaDelivery string `db:"media_delivery"`
+				}
+				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to convert video to base64")
-					return
+					log.Error().Err(err).Msg("Failed to get S3 config")
+					s3Config.Enabled = false
+					s3Config.MediaDelivery = "base64"
 				}
 
-				// Add the base64 string and other details to the postmap
-				postmap["base64"] = base64String
-				postmap["mimeType"] = mimeType
-				postmap["fileName"] = filepath.Base(tmpPath)
+				// Process S3 upload if enabled
+				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+					// Get sender JID for inbox/outbox determination
+					isIncoming := evt.Info.IsFromMe == false
+					contactJID := evt.Info.Sender.String()
+					if evt.Info.IsGroup {
+						contactJID = evt.Info.Chat.String()
+					}
+
+					// Process S3 upload
+					s3Data, err := GetS3Manager().ProcessMediaForS3(
+						context.Background(),
+						txtid,
+						contactJID,
+						evt.Info.ID,
+						data,
+						video.GetMimetype(),
+						filepath.Base(tmpPath),
+						isIncoming,
+					)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to upload video to S3")
+					} else {
+						postmap["s3"] = s3Data
+					}
+				}
+
+				// Convert the video to base64 if needed
+				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+					base64String, mimeType, err := fileToBase64(tmpPath)
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to convert video to base64")
+						return
+					}
+
+					// Add the base64 string and other details to the postmap
+					postmap["base64"] = base64String
+					postmap["mimeType"] = mimeType
+					postmap["fileName"] = filepath.Base(tmpPath)
+				}
 
 				// Log the successful conversion
-				log.Info().Str("path", tmpPath).Msg("Video converted to base64")
+				log.Info().Str("path", tmpPath).Msg("Video processed")
 
 				// Delete the temporary file
 				err = os.Remove(tmpPath)
@@ -701,43 +913,101 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 			webhookurl = myuserinfo.(Values).Get("Webhook")
 		}
 
-		if !Find(mycli.subscriptions, postmap["type"].(string)) && !Find(mycli.subscriptions, "All") {
-			log.Warn().Str("type", postmap["type"].(string)).Msg("Skipping webhook. Not subscribed for this type")
+		// Get updated events from cache/database
+		currentEvents := ""
+		userinfo2, found2 := userinfocache.Get(mycli.token)
+		if found2 {
+			currentEvents = userinfo2.(Values).Get("Events")
+		} else {
+			// If not in cache, get from database
+			var err error
+			err = mycli.db.Get(&currentEvents, "SELECT events FROM users WHERE id=$1", mycli.userID)
+			if err != nil {
+				log.Warn().Err(err).Msg("Could not get events from DB")
+			}
+		}
+
+		// Update client subscriptions if changed
+		eventarray := strings.Split(currentEvents, ",")
+		var subscribedEvents []string
+		if len(eventarray) == 1 && eventarray[0] == "" {
+			subscribedEvents = []string{}
+		} else {
+			for _, arg := range eventarray {
+				arg = strings.TrimSpace(arg)
+				if arg != "" && Find(supportedEventTypes, arg) {
+					subscribedEvents = append(subscribedEvents, arg)
+				}
+			}
+		}
+
+		// Update the client subscriptions
+		mycli.subscriptions = subscribedEvents
+
+		// Log subscription details for debugging
+		log.Debug().
+			Str("userID", mycli.userID).
+			Str("eventType", postmap["type"].(string)).
+			Strs("subscribedEvents", subscribedEvents).
+			Msg("Checking event subscription")
+
+		// Check if the current event is in the subscriptions
+		if !Find(subscribedEvents, postmap["type"].(string)) && !Find(subscribedEvents, "All") {
+			log.Warn().
+				Str("type", postmap["type"].(string)).
+				Strs("subscribedEvents", subscribedEvents).
+				Str("userID", mycli.userID).
+				Msg("Skipping webhook. Not subscribed for this type")
 			return
 		}
 
+		// Prepare webhook data
+		jsonData, err := json.Marshal(postmap)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to marshal postmap to JSON")
+			return
+		}
+
+		data := map[string]string{
+			"jsonData": string(jsonData),
+			"token":    mycli.token,
+		}
+
+		// Add this log
+		log.Debug().Interface("webhookData", data).Msg("Data being sent to webhook")
+
+		// Call user webhook if configured
 		if webhookurl != "" {
-			log.Info().Str("url", webhookurl).Msg("Calling webhook")
-			jsonData, err := json.Marshal(postmap)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to marshal postmap to JSON")
+			log.Info().Str("url", webhookurl).Msg("Calling user webhook")
+			if path == "" {
+				go callHook(webhookurl, data, mycli.userID)
 			} else {
-				data := map[string]string{
-					"jsonData": string(jsonData),
-					"token":    mycli.token,
-				}
+				// Create a channel to capture the error from the goroutine
+				errChan := make(chan error, 1)
+				go func() {
+					err := callHookFile(webhookurl, data, mycli.userID, path)
+					errChan <- err
+				}()
 
-				// Adicione este log
-				log.Debug().Interface("webhookData", data).Msg("Data being sent to webhook")
-
-				if path == "" {
-					go callHook(webhookurl, data, mycli.userID)
-				} else {
-					// Create a channel to capture error from the goroutine
-					errChan := make(chan error, 1)
-					go func() {
-						err := callHookFile(webhookurl, data, mycli.userID, path)
-						errChan <- err
-					}()
-
-					// Optionally handle the error from the channel
-					if err := <-errChan; err != nil {
-						log.Error().Err(err).Msg("Error calling hook file")
-					}
+				// Optionally handle the error from the channel (if needed)
+				if err := <-errChan; err != nil {
+					log.Error().Err(err).Msg("Error calling hook file")
 				}
 			}
 		} else {
 			log.Warn().Str("userid", mycli.userID).Msg("No webhook set for user")
+		}
+
+		// Get global webhook if configured
+		if *globalWebhook != "" {
+			log.Info().Str("url", *globalWebhook).Msg("Calling global webhook")
+			// Add extra information for the global webhook
+			globalData := map[string]string{
+				"jsonData": string(jsonData),
+				"token":    mycli.token,
+				"userID":   mycli.userID,
+			}
+			go callHook(*globalWebhook, globalData, mycli.userID)
 		}
 	}
 }
