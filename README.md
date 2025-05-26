@@ -295,6 +295,11 @@ Check the [API Reference](https://github.com/asternic/wuzapi/blob/main/API.md)
 </tr>
 </table>
 
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=asternic/wuzapi&type=Date)](https://www.star-history.com/#asternic/wuzapi&Date)
+
 ## License
 
 Copyright &copy; 2025 Nicolás Gudiño and contributors
