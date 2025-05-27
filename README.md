@@ -92,6 +92,7 @@ DB_HOST=localhost
 DB_PORT=5432
 TZ=America/New_York
 WEBHOOK_FORMAT=json # or "form" for the default
+SESSION_DEVICE_NAME=WuzAPI
 ```
 
 ### For SQLite
