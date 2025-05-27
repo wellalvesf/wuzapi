@@ -1,47 +1,33 @@
 # WUZAPI
 
 <img src="static/favicon.ico" width="30"> WuzAPI is an implementation 
-of [@tulir/whatsmeow](https://github.com/tulir/whatsmeow) library as a 
+of the [@tulir/whatsmeow](https://github.com/tulir/whatsmeow) library as a 
 simple RESTful API service with multiple device support and concurrent 
 sessions.
 
-Whatsmeow does not use Puppeteer on headless Chrome, nor an Android emulator. 
-It talks directly to WhatsApp websocket servers, thus is quite fast and uses 
-much less memory and CPU than those solutions. The drawback is that a change 
-in the WhatsApp protocol could break connections and will require a library 
-update.
+Whatsmeow does not use Puppeteer on headless Chrome, nor an Android emulator. It communicates directly with WhatsApp’s WebSocket servers, making it significantly faster and much less demanding on memory and CPU than those solutions. The drawback is that any changes to the WhatsApp protocol could break connections, requiring a library update.
 
 ## :warning: Warning
 
-**Using this software violating WhatsApp ToS can get your number banned**: 
-Be very careful, do not use this to send SPAM or anything like it. Use at
-your own risk. If you need to develop something with commercial interest 
-you should contact a WhatsApp global solution provider and sign up for the
-Whatsapp Business API service instead.
-
+**Using this software in violation of WhatsApp’s Terms of Service can get your number banned**:  
+Be very careful—do not use this to send SPAM or anything similar. Use at your own risk. If you need to develop something for commercial purposes, contact a WhatsApp global solution provider and sign up for the WhatsApp Business API service instead.
+ 
 ## Available endpoints
 
-* Session: connect, disconnect and logout from WhatsApp. Retrieve 
-connection status. Retrieve QR code for scanning.
-* Messages: send text, image, audio, document, template, video, sticker, 
-location, contact and poll messages.
-* Users: check if phones have whatsapp, get user information, get user avatar, 
-retrieve full contact list.
-* Chat: set presence (typing/paused,recording media), mark messages as read, 
-download images from messages, send reactions.
-* Groups: list subscribed, get info, get invite links, change photo and name.
-* Webhooks: set and get webhook that will be called whenever events/messages 
-are received.
-
+* **Session:** Connect, disconnect, and log out from WhatsApp. Retrieve connection status and QR codes for scanning.
+* **Messages:** Send text, image, audio, document, template, video, sticker, location, contact, and poll messages.
+* **Users:** Check if phone numbers have WhatsApp, get user information and avatars, and retrieve the full contact list.
+* **Chat:** Set presence (typing/paused, recording media), mark messages as read, download images from messages, send reactions.
+* **Groups:** Create, delete and list groups, get info, get invite links, set participants, change group photos and names.
+* **Webhooks:** Set and get webhooks that will be called whenever events or messages are received.
+ 
 ## Prerequisites
 
-Packages:
-
+**Required:**
 * Go (Go Programming Language)
 
-Optional:
-
-* Docker (Containerization)
+**Optional:**
+* Docker (for containerization)
 
 ## Updating dependencies
 
