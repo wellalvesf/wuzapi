@@ -7,9 +7,10 @@ info:
    
 schemes:
   - http
+
 servers:
-  - url: http://localhost:8080
-    description: Local development server
+  - url: '/'
+    description: Current host
 
 paths:
   /admin/users:
