@@ -86,7 +86,7 @@ func sendToUserWebHook(webhookurl string, path string, jsonData []byte, userID s
 	}
 }
 
-func getUpdatedUserSubscriptions(mycli *MyClient) []string {
+func updateAndGetUserSubscriptions(mycli *MyClient) []string {
 	// Get updated events from cache/database
 	currentEvents := ""
 	userinfo2, found2 := userinfocache.Get(mycli.token)
