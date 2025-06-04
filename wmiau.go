@@ -141,7 +141,7 @@ func sendEventWithWebHook(mycli *MyClient, postmap map[string]interface{}, path 
 	// Log subscription details for debugging
 	log.Debug().
 		Str("userID", mycli.userID).
-		Str("eventType", postmap["type"].(string)).
+		Str("eventType", eventType).
 		Strs("subscribedEvents", subscribedEvents).
 		Msg("Checking event subscription")
 
