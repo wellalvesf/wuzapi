@@ -86,7 +86,7 @@ func sendToUserWebHook(webhookurl string, path string, jsonData []byte, userID s
 	}
 }
 
-func updateAndGetUserSubscriptions(mycli *MyClient) []string {
+func updateAndGetUserSubscriptions(mycli *MyClient) ([]string, error) {
 	// Get updated events from cache/database
 	currentEvents := ""
 	userinfo2, found2 := userinfocache.Get(mycli.token)
@@ -94,10 +94,9 @@ func updateAndGetUserSubscriptions(mycli *MyClient) []string {
 		currentEvents = userinfo2.(Values).Get("Events")
 	} else {
 		// If not in cache, get from database
-		var err error
-		err = mycli.db.Get(&currentEvents, "SELECT events FROM users WHERE id=$1", mycli.userID)
-		if err != nil {
-			log.Warn().Err(err).Msg("Could not get events from DB")
+		if err := mycli.db.Get(&currentEvents, "SELECT events FROM users WHERE id=$1", mycli.userID); err != nil {
+			log.Warn().Err(err).Str("userID", mycli.userID).Msg("Could not get events from DB")
+			return nil, err // Propagate the error
 		}
 	}
 
@@ -118,7 +117,7 @@ func updateAndGetUserSubscriptions(mycli *MyClient) []string {
 	// Update the client subscriptions
 	mycli.subscriptions = subscribedEvents
 
-	return subscribedEvents
+	return subscribedEvents, nil
 }
 
 func getUserWebhookUrl(token string) string {
@@ -136,7 +135,16 @@ func sendEventWithWebHook(mycli *MyClient, postmap map[string]interface{}, path 
 	webhookurl := getUserWebhookUrl(mycli.token)
 
 	// Get updated events from cache/database
-	subscribedEvents := getUpdatedUserSubscriptions(mycli)
+	subscribedEvents, err := updateAndGetUserSubscriptions(mycli)
+	if err != nil {
+		return
+	}
+
+	eventType, ok := postmap["type"].(string)
+	if !ok {
+		log.Error().Msg("Event type is not a string in postmap")
+		return
+	}
 
 	// Log subscription details for debugging
 	log.Debug().
