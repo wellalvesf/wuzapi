@@ -41,6 +41,150 @@ type MyClient struct {
 	db             *sqlx.DB
 }
 
+func sendToGlobalWebHook(jsonData []byte, token string, userID string) {
+	jsonDataStr := string(jsonData)
+
+	if *globalWebhook != "" {
+		log.Info().Str("url", *globalWebhook).Msg("Calling global webhook")
+		// Add extra information for the global webhook
+		globalData := map[string]string{
+			"jsonData": jsonDataStr,
+			"token":    token,
+			"userID":   userID,
+		}
+		callHook(*globalWebhook, globalData, userID)
+	}
+}
+
+func sendToUserWebHook(webhookurl string, path string, jsonData []byte, userID string, token string) {
+	data := map[string]string{
+		"jsonData": string(jsonData),
+		"token":    token,
+	}
+
+	log.Debug().Interface("webhookData", data).Msg("Data being sent to webhook")
+
+	if webhookurl != "" {
+		log.Info().Str("url", webhookurl).Msg("Calling user webhook")
+		if path == "" {
+			go callHook(webhookurl, data, userID)
+		} else {
+			// Create a channel to capture the error from the goroutine
+			errChan := make(chan error, 1)
+			go func() {
+				err := callHookFile(webhookurl, data, userID, path)
+				errChan <- err
+			}()
+
+			// Optionally handle the error from the channel (if needed)
+			if err := <-errChan; err != nil {
+				log.Error().Err(err).Msg("Error calling hook file")
+			}
+		}
+	} else {
+		log.Warn().Str("userid", userID).Msg("No webhook set for user")
+	}
+}
+
+func updateAndGetUserSubscriptions(mycli *MyClient) ([]string, error) {
+	// Get updated events from cache/database
+	currentEvents := ""
+	userinfo2, found2 := userinfocache.Get(mycli.token)
+	if found2 {
+		currentEvents = userinfo2.(Values).Get("Events")
+	} else {
+		// If not in cache, get from database
+		if err := mycli.db.Get(&currentEvents, "SELECT events FROM users WHERE id=$1", mycli.userID); err != nil {
+			log.Warn().Err(err).Str("userID", mycli.userID).Msg("Could not get events from DB")
+			return nil, err // Propagate the error
+		}
+	}
+
+	// Update client subscriptions if changed
+	eventarray := strings.Split(currentEvents, ",")
+	var subscribedEvents []string
+	if len(eventarray) == 1 && eventarray[0] == "" {
+		subscribedEvents = []string{}
+	} else {
+		for _, arg := range eventarray {
+			arg = strings.TrimSpace(arg)
+			if arg != "" && Find(supportedEventTypes, arg) {
+				subscribedEvents = append(subscribedEvents, arg)
+			}
+		}
+	}
+
+	// Update the client subscriptions
+	mycli.subscriptions = subscribedEvents
+
+	return subscribedEvents, nil
+}
+
+func getUserWebhookUrl(token string) string {
+	webhookurl := ""
+	myuserinfo, found := userinfocache.Get(token)
+	if !found {
+		log.Warn().Str("token", token).Msg("Could not call webhook as there is no user for this token")
+	} else {
+		webhookurl = myuserinfo.(Values).Get("Webhook")
+	}
+	return webhookurl
+}
+
+func sendEventWithWebHook(mycli *MyClient, postmap map[string]interface{}, path string) {
+	webhookurl := getUserWebhookUrl(mycli.token)
+
+	// Get updated events from cache/database
+	subscribedEvents, err := updateAndGetUserSubscriptions(mycli)
+	if err != nil {
+		return
+	}
+
+	eventType, ok := postmap["type"].(string)
+	if !ok {
+		log.Error().Msg("Event type is not a string in postmap")
+		return
+	}
+
+	// Log subscription details for debugging
+	log.Debug().
+		Str("userID", mycli.userID).
+		Str("eventType", eventType).
+		Strs("subscribedEvents", subscribedEvents).
+		Msg("Checking event subscription")
+
+	// Check if the current event is in the subscriptions
+	checkIfSubscribedInEvent := checkIfSubscribedToEvent(subscribedEvents, postmap["type"].(string), mycli.userID)
+	if !checkIfSubscribedInEvent {
+		return
+	}
+
+	// Prepare webhook data
+	jsonData, err := json.Marshal(postmap)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal postmap to JSON")
+		return
+	}
+
+	// Call user webhook if configured
+	sendToUserWebHook(webhookurl, path, jsonData, mycli.userID, mycli.token)
+
+	// Get global webhook if configured
+	go sendToGlobalWebHook(jsonData, mycli.token, mycli.userID)
+}
+
+func checkIfSubscribedToEvent(subscribedEvents []string, eventType string, userId string) bool {
+	if !Find(subscribedEvents, eventType) && !Find(subscribedEvents, "All") {
+		log.Warn().
+			Str("type", eventType).
+			Strs("subscribedEvents", subscribedEvents).
+			Str("userID", userId).
+			Msg("Skipping webhook. Not subscribed for this type")
+		return false
+	}
+	return true
+}
+
 // Connects to Whatsapp Websocket on server startup if last state was connected
 func (s *server) connectOnStartup() {
 	rows, err := s.db.Queryx("SELECT id,name,token,jid,webhook,events,proxy_url FROM users WHERE connected=1")
@@ -289,6 +433,15 @@ func (s *server) startClient(userID string, textjid string, token string, subscr
 							log.Info().Str("qrcode", base64qrcode).Msg("update cache userinfo with qr code")
 						}
 					}
+
+					//send QR code with webhook
+					postmap := make(map[string]interface{})
+					postmap["event"] = evt.Event
+					postmap["qrCodeBase64"] = base64qrcode
+					postmap["type"] = "QR"
+
+					sendEventWithWebHook(&mycli, postmap, "")
+
 				} else if evt.Event == "timeout" {
 					// Clear QR code from DB on timeout
 					sqlStmt := `UPDATE users SET qrcode='' WHERE id=$1`
@@ -383,8 +536,10 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 			}
 		}
 	case *events.Connected, *events.PushNameSetting:
+		postmap["type"] = "Connected"
+		dowebhook = 1
 		if len(mycli.WAClient.Store.PushName) == 0 {
-			return
+			break
 		}
 		// Send presence available when connecting and when the pushname is changed.
 		// This makes sure that outgoing messages always have the right pushname.
@@ -877,6 +1032,8 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 	case *events.AppState:
 		log.Info().Str("index", fmt.Sprintf("%+v", evt.Index)).Str("actionValue", fmt.Sprintf("%+v", evt.SyncActionValue)).Msg("App state event received")
 	case *events.LoggedOut:
+		postmap["type"] = "Logged Out"
+		dowebhook = 1
 		log.Info().Str("reason", evt.Reason.String()).Msg("Logged out")
 		killchannel[mycli.userID] <- true
 		sqlStmt := `UPDATE users SET connected=0 WHERE id=$1`
@@ -899,115 +1056,19 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		log.Info().Str("event", fmt.Sprintf("%+v", evt)).Msg("Got call offer notice")
 	case *events.CallRelayLatency:
 		log.Info().Str("event", fmt.Sprintf("%+v", evt)).Msg("Got call relay latency")
+	case *events.Disconnected:
+		postmap["type"] = "Disconnected"
+		dowebhook = 1
+		log.Info().Str("reason", fmt.Sprintf("%+v", evt)).Msg("Disconnected from Whatsapp")
+	case *events.ConnectFailure:
+		postmap["type"] = "ConnectFailure"
+		dowebhook = 1
+		log.Error().Str("reason", fmt.Sprintf("%+v", evt)).Msg("Failed to connect to Whatsapp")
 	default:
 		log.Warn().Str("event", fmt.Sprintf("%+v", evt)).Msg("Unhandled event")
 	}
 
 	if dowebhook == 1 {
-		// call webhook
-		webhookurl := ""
-		myuserinfo, found := userinfocache.Get(mycli.token)
-		if !found {
-			log.Warn().Str("token", mycli.token).Msg("Could not call webhook as there is no user for this token")
-		} else {
-			webhookurl = myuserinfo.(Values).Get("Webhook")
-		}
-
-		// Get updated events from cache/database
-		currentEvents := ""
-		userinfo2, found2 := userinfocache.Get(mycli.token)
-		if found2 {
-			currentEvents = userinfo2.(Values).Get("Events")
-		} else {
-			// If not in cache, get from database
-			var err error
-			err = mycli.db.Get(&currentEvents, "SELECT events FROM users WHERE id=$1", mycli.userID)
-			if err != nil {
-				log.Warn().Err(err).Msg("Could not get events from DB")
-			}
-		}
-
-		// Update client subscriptions if changed
-		eventarray := strings.Split(currentEvents, ",")
-		var subscribedEvents []string
-		if len(eventarray) == 1 && eventarray[0] == "" {
-			subscribedEvents = []string{}
-		} else {
-			for _, arg := range eventarray {
-				arg = strings.TrimSpace(arg)
-				if arg != "" && Find(supportedEventTypes, arg) {
-					subscribedEvents = append(subscribedEvents, arg)
-				}
-			}
-		}
-
-		// Update the client subscriptions
-		mycli.subscriptions = subscribedEvents
-
-		// Log subscription details for debugging
-		log.Debug().
-			Str("userID", mycli.userID).
-			Str("eventType", postmap["type"].(string)).
-			Strs("subscribedEvents", subscribedEvents).
-			Msg("Checking event subscription")
-
-		// Check if the current event is in the subscriptions
-		if !Find(subscribedEvents, postmap["type"].(string)) && !Find(subscribedEvents, "All") {
-			log.Warn().
-				Str("type", postmap["type"].(string)).
-				Strs("subscribedEvents", subscribedEvents).
-				Str("userID", mycli.userID).
-				Msg("Skipping webhook. Not subscribed for this type")
-			return
-		}
-
-		// Prepare webhook data
-		jsonData, err := json.Marshal(postmap)
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to marshal postmap to JSON")
-			return
-		}
-
-		data := map[string]string{
-			"jsonData": string(jsonData),
-			"token":    mycli.token,
-		}
-
-		// Add this log
-		log.Debug().Interface("webhookData", data).Msg("Data being sent to webhook")
-
-		// Call user webhook if configured
-		if webhookurl != "" {
-			log.Info().Str("url", webhookurl).Msg("Calling user webhook")
-			if path == "" {
-				go callHook(webhookurl, data, mycli.userID)
-			} else {
-				// Create a channel to capture the error from the goroutine
-				errChan := make(chan error, 1)
-				go func() {
-					err := callHookFile(webhookurl, data, mycli.userID, path)
-					errChan <- err
-				}()
-
-				// Optionally handle the error from the channel (if needed)
-				if err := <-errChan; err != nil {
-					log.Error().Err(err).Msg("Error calling hook file")
-				}
-			}
-		} else {
-			log.Warn().Str("userid", mycli.userID).Msg("No webhook set for user")
-		}
-
-		// Get global webhook if configured
-		if *globalWebhook != "" {
-			log.Info().Str("url", *globalWebhook).Msg("Calling global webhook")
-			// Add extra information for the global webhook
-			globalData := map[string]string{
-				"jsonData": string(jsonData),
-				"token":    mycli.token,
-				"userID":   mycli.userID,
-			}
-			go callHook(*globalWebhook, globalData, mycli.userID)
-		}
+		sendEventWithWebHook(mycli, postmap, path)
 	}
 }
