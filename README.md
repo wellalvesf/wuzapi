@@ -129,12 +129,9 @@ When enabled:
 
 To interact with the API, you must include the `Authorization` header in HTTP requests, containing the user's authentication token. You can have multiple users (different WhatsApp numbers) on the same server.  
 
-* Uma referência da API Swagger em [/api](/api)
-* Uma página web de exemplo para conectar e escanear códigos QR em [/login](/login) (onde você precisará passar ?token=seu_token_aqui)
-
-A Swagger API reference at [/api](/api)
-
-A sample web page to connect and scan QR codes at [/login](/login)
+* A Swagger API reference at [/api](/api)
+* A sample web page to connect and scan QR codes at [/login](/login)
+* A fully featured Dashboard to create, manage and test instances at [/dashboard](dashboard)
 
 ## ADMIN Actions
 
