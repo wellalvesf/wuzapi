@@ -101,11 +101,30 @@ WUZAPI_ADMIN_TOKEN=your_admin_token_here
 TZ=America/New_York
 ```
 
-Key configuration options:
+### RabbitMQ Integration
+WuzAPI supports sending WhatsApp events to a RabbitMQ queue for global event distribution. When enabled, all WhatsApp events will be published to the specified queue regardless of individual user webhook configurations.
+
+Configuration
+Set these environment variables to enable RabbitMQ integration:
+
+```
+RABBITMQ_URL=amqp://guest:guest@localhost:5672
+RABBITMQ_QUEUE=whatsapp  # Optional (default: whatsapp_events)
+```
+
+When enabled:
+
+* All WhatsApp events (messages, presence updates, etc.) will be published to the configured queue regardless of event subscritions for regular webhooks
+* Events will include the userId and instanceName
+* This works alongside webhook configurations - events will be sent to both RabbitMQ and any configured webhooks
+* The integration is global and affects all instances
+
+#### Key configuration options:
 
 * WUZAPI_ADMIN_TOKEN: Required - Authentication token for admin endpoints
 * TZ: Optional - Timezone for server operations (default: UTC)
 * PostgreSQL-specific options: Only required when using PostgreSQL backend
+* RabbitMQ options: Optional, only required if you want to publish events to RabbitMQ
 
 ## Usage
 
