@@ -146,6 +146,8 @@ func init() {
 	} else {
 		log.Info().Str("global_webhook", *globalWebhook).Msg("Global webhook configured from command line")
 	}
+
+	InitRabbitMQ()
 }
 
 func main() {
