@@ -104,7 +104,6 @@ TZ=America/New_York
 ### RabbitMQ Integration
 WuzAPI supports sending WhatsApp events to a RabbitMQ queue for global event distribution. When enabled, all WhatsApp events will be published to the specified queue regardless of individual user webhook configurations.
 
-Configuration
 Set these environment variables to enable RabbitMQ integration:
 
 ```
