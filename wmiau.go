@@ -44,22 +44,36 @@ type MyClient struct {
 func sendToGlobalWebHook(jsonData []byte, token string, userID string) {
 	jsonDataStr := string(jsonData)
 
+	instance_name := ""
+	userinfo, found := userinfocache.Get(token)
+	if found {
+		instance_name = userinfo.(Values).Get("Name")
+	}
+
 	if *globalWebhook != "" {
 		log.Info().Str("url", *globalWebhook).Msg("Calling global webhook")
 		// Add extra information for the global webhook
 		globalData := map[string]string{
-			"jsonData": jsonDataStr,
-			"token":    token,
-			"userID":   userID,
+			"jsonData":     jsonDataStr,
+			"token":        token,
+			"userID":       userID,
+			"instanceName": instance_name,
 		}
 		callHook(*globalWebhook, globalData, userID)
 	}
 }
 
 func sendToUserWebHook(webhookurl string, path string, jsonData []byte, userID string, token string) {
+
+	instance_name := ""
+	userinfo, found := userinfocache.Get(token)
+	if found {
+		instance_name = userinfo.(Values).Get("Name")
+	}
 	data := map[string]string{
-		"jsonData": string(jsonData),
-		"token":    token,
+		"jsonData":     string(jsonData),
+		"token":        token,
+		"instanceName": instance_name,
 	}
 
 	log.Debug().Interface("webhookData", data).Msg("Data being sent to webhook")
