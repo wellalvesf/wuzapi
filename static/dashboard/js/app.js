@@ -820,7 +820,7 @@ async function connect(token='') {
   res = await fetch(baseUrl + "/session/connect", {
     method: "POST",
     headers: myHeaders,
-    body: JSON.stringify({Events: 'All', Immediate: true})
+    body: JSON.stringify({Subscribe: 'All', Immediate: true})
   });
   data = await res.json();
   updateInterval=1000; // Decrease interval to react quicker to QR scan
