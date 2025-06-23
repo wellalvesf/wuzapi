@@ -29,9 +29,7 @@ import (
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 
-var historySyncID int32
-
-// Declaração do campo db como *sqlx.DB
+// db field declaration as *sqlx.DB
 type MyClient struct {
 	WAClient       *whatsmeow.Client
 	eventHandlerID uint32
