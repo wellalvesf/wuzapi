@@ -4046,16 +4046,6 @@ func (s *server) ListUsers() http.HandlerFunc {
 		var query string
 		var args []interface{}
 
-		/*
-			// Query the database to get the list of users
-			rows, err := s.db.Queryx("SELECT id, name, token, webhook, jid, qrcode, connected, expiration, events FROM users")
-			if err != nil {
-				s.Respond(w, r, http.StatusInternalServerError, errors.New("problem accessing DB"))
-				return
-			}
-			defer rows.Close()
-		*/
-
 		if hasID {
 			// Fetch a single user
 			query = "SELECT id, name, token, webhook, jid, qrcode, connected, expiration, proxy_url, events FROM users WHERE id = $1"
@@ -4180,8 +4170,8 @@ func (s *server) AddUser() http.HandlerFunc {
 			return
 		}
 
-		log.Info().Interface("proxyConfig", user.ProxyConfig).Interface("s3Config", user.S3Config).Msg("Valores recebidos para proxyConfig e s3Config")
-		log.Debug().Interface("user", user).Msg("Valores recebidos para user")
+		log.Info().Interface("proxyConfig", user.ProxyConfig).Interface("s3Config", user.S3Config).Msg("Received values for proxyConfig and s3Config")
+		log.Debug().Interface("user", user).Msg("Received values for user")
 
 		// Set defaults only if nil
 		if user.Events == "" {
