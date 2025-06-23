@@ -203,7 +203,7 @@ func checkIfSubscribedToEvent(subscribedEvents []string, eventType string, userI
 
 // Connects to Whatsapp Websocket on server startup if last state was connected
 func (s *server) connectOnStartup() {
-	rows, err := s.db.Queryx("SELECT id,name,token,jid,webhook,events,proxy_url FROM users WHERE connected=1")
+	rows, err := s.db.Queryx("SELECT id,name,token,jid,webhook,events,proxy_url,CASE WHEN s3_enabled THEN 'true' ELSE 'false' END AS s3_enabled,media_delivery FROM users WHERE connected=1")
 	if err != nil {
 		log.Error().Err(err).Msg("DB Problem")
 		return
@@ -217,20 +217,24 @@ func (s *server) connectOnStartup() {
 		webhook := ""
 		events := ""
 		proxy_url := ""
-		err = rows.Scan(&txtid, &name, &token, &jid, &webhook, &events, &proxy_url)
+		s3_enabled := ""
+		media_delivery := ""
+		err = rows.Scan(&txtid, &name, &token, &jid, &webhook, &events, &proxy_url, &s3_enabled, &media_delivery)
 		if err != nil {
 			log.Error().Err(err).Msg("DB Problem")
 			return
 		} else {
 			log.Info().Str("token", token).Msg("Connect to Whatsapp on startup")
 			v := Values{map[string]string{
-				"Id":      txtid,
-				"Name":    name,
-				"Jid":     jid,
-				"Webhook": webhook,
-				"Token":   token,
-				"Proxy":   proxy_url,
-				"Events":  events,
+				"Id":            txtid,
+				"Name":          name,
+				"Jid":           jid,
+				"Webhook":       webhook,
+				"Token":         token,
+				"Proxy":         proxy_url,
+				"Events":        events,
+				"S3Enabled":     s3_enabled,
+				"MediaDelivery": media_delivery,
 			}}
 			userinfocache.Set(token, v, cache.NoExpiration)
 			// Gets and set subscription to webhook events
@@ -595,6 +599,25 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		log.Info().Msg("Received StreamReplaced event")
 		return
 	case *events.Message:
+
+		var s3Config struct {
+			Enabled       string   `db:"s3_enabled"`
+			MediaDelivery string `db:"media_delivery"`
+		}
+
+	    myuserinfo, found := userinfocache.Get(mycli.token)
+		if !found {
+			err := mycli.db.Get(&s3Config, "SELECT CASE WHEN s3_enabled = 1 THEN 'true' ELSE 'false' END AS s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
+			if err != nil {
+				log.Error().Err(err).Msg("onMessage Failed to get S3 config from DB as it was not on cache")
+				s3Config.Enabled = "false"
+				s3Config.MediaDelivery = "base64"
+			}
+		} else {
+			s3Config.Enabled = myuserinfo.(Values).Get("S3Enabled")
+			s3Config.MediaDelivery = myuserinfo.(Values).Get("MediaDelivery")
+		}
+
 		postmap["type"] = "Message"
 		dowebhook = 1
 		metaParts := []string{fmt.Sprintf("pushname: %s", evt.Info.PushName), fmt.Sprintf("timestamp: %s", evt.Info.Timestamp)}
@@ -643,20 +666,8 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Check if S3 is enabled for this user
-				var s3Config struct {
-					Enabled       bool   `db:"s3_enabled"`
-					MediaDelivery string `db:"media_delivery"`
-				}
-				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to get S3 config")
-					s3Config.Enabled = false
-					s3Config.MediaDelivery = "base64"
-				}
-
 				// Process S3 upload if enabled
-				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+				if s3Config.Enabled == "true" && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
 					// Get sender JID for inbox/outbox determination
 					isIncoming := evt.Info.IsFromMe == false
 					contactJID := evt.Info.Sender.String()
@@ -743,20 +754,8 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Check if S3 is enabled for this user
-				var s3Config struct {
-					Enabled       bool   `db:"s3_enabled"`
-					MediaDelivery string `db:"media_delivery"`
-				}
-				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to get S3 config")
-					s3Config.Enabled = false
-					s3Config.MediaDelivery = "base64"
-				}
-
 				// Process S3 upload if enabled
-				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+				if s3Config.Enabled == "true" && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
 					// Get sender JID for inbox/outbox determination
 					isIncoming := evt.Info.IsFromMe == false
 					contactJID := evt.Info.Sender.String()
@@ -848,20 +847,8 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Check if S3 is enabled for this user
-				var s3Config struct {
-					Enabled       bool   `db:"s3_enabled"`
-					MediaDelivery string `db:"media_delivery"`
-				}
-				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to get S3 config")
-					s3Config.Enabled = false
-					s3Config.MediaDelivery = "base64"
-				}
-
 				// Process S3 upload if enabled
-				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+				if s3Config.Enabled == "true" && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
 					// Get sender JID for inbox/outbox determination
 					isIncoming := evt.Info.IsFromMe == false
 					contactJID := evt.Info.Sender.String()
@@ -942,20 +929,8 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 					return
 				}
 
-				// Check if S3 is enabled for this user
-				var s3Config struct {
-					Enabled       bool   `db:"s3_enabled"`
-					MediaDelivery string `db:"media_delivery"`
-				}
-				err = mycli.db.Get(&s3Config, "SELECT s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to get S3 config")
-					s3Config.Enabled = false
-					s3Config.MediaDelivery = "base64"
-				}
-
 				// Process S3 upload if enabled
-				if s3Config.Enabled && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
+				if s3Config.Enabled == "true" && (s3Config.MediaDelivery == "s3" || s3Config.MediaDelivery == "both") {
 					// Get sender JID for inbox/outbox determination
 					isIncoming := evt.Info.IsFromMe == false
 					contactJID := evt.Info.Sender.String()
