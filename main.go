@@ -47,13 +47,14 @@ var (
 	globalWebhook = flag.String("globalwebhook", "", "Global webhook URL to receive all events from all users")
 	versionFlag   = flag.Bool("version", false, "Display version information and exit")
 
-	container     *sqlstore.Container
-	clientManager = NewClientManager()
-	killchannel   = make(map[string](chan bool))
-	userinfocache = cache.New(5*time.Minute, 10*time.Minute)
+	container        *sqlstore.Container
+	clientManager    = NewClientManager()
+	killchannel      = make(map[string](chan bool))
+	userinfocache    = cache.New(5*time.Minute, 10*time.Minute)
+	lastMessageCache = cache.New(24*time.Hour, 24*time.Hour)
 )
 
-const version = "1.0.0"
+const version = "1.0.1"
 
 func init() {
 	err := godotenv.Load()

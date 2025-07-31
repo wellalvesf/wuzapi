@@ -603,6 +603,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 			MediaDelivery string `db:"media_delivery"`
 		}
 
+		lastMessageCache.Set(mycli.userID, &evt.Info, cache.DefaultExpiration)
 		myuserinfo, found := userinfocache.Get(mycli.token)
 		if !found {
 			err := mycli.db.Get(&s3Config, "SELECT CASE WHEN s3_enabled = 1 THEN 'true' ELSE 'false' END AS s3_enabled, media_delivery FROM users WHERE id = $1", txtid)
