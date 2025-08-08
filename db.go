@@ -42,7 +42,7 @@ func getDatabaseConfig(exPath string) DatabaseConfig {
 	if dbSSL == "true" {
 		sslMode = "require"
 	} else if dbSSL == "false" || dbSSL == "" {
-		sslMode =
+		sslMode = "disable"
 	}
 
 	if dbUser != "" && dbPassword != "" && dbName != "" && dbHost != "" && dbPort != "" {
