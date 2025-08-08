@@ -105,7 +105,7 @@ function initDemo() {
             { type: 'code', content: `POST /chat/send/text
 {
   "Phone": "5491155551234",
-  "Body": "Hello, this was sent via WuzAPI!"
+  "Body": "Olá, esta mensagem foi enviada via Stevo Manager!"
 }`},
             { type: 'received', content: 'Cool! Message was sent successfully.' }
         ],

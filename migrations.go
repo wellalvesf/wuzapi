@@ -50,6 +50,11 @@ var migrations = []Migration{
 		Name:  "add_s3_support",
 		UpSQL: addS3SupportSQL,
 	},
+	{
+		ID:    5,
+		Name:  "add_labels_tables",
+		UpSQL: addLabelsTablesSQL,
+	},
 }
 
 const changeIDToStringSQL = `
@@ -139,6 +144,41 @@ BEGIN
     
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 's3_retention_days') THEN
         ALTER TABLE users ADD COLUMN s3_retention_days INTEGER DEFAULT 30;
+    END IF;
+END $$;
+`
+
+const addLabelsTablesSQL = `
+-- PostgreSQL version
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'labels') THEN
+        CREATE TABLE labels (
+            user_id   TEXT NOT NULL,
+            label_id  TEXT NOT NULL,
+            name      TEXT DEFAULT '',
+            color     INTEGER DEFAULT 0,
+            type      TEXT DEFAULT 'CUSTOM',
+            is_active BOOLEAN DEFAULT TRUE,
+            is_immutable BOOLEAN DEFAULT FALSE,
+            order_index INTEGER DEFAULT 0,
+            deleted   BOOLEAN DEFAULT FALSE,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, label_id)
+        );
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'label_associations') THEN
+        CREATE TABLE label_associations (
+            user_id    TEXT NOT NULL,
+            label_id   TEXT NOT NULL,
+            target_type TEXT NOT NULL,
+            chat_jid   TEXT NOT NULL DEFAULT '',
+            message_id TEXT NOT NULL DEFAULT '',
+            labeled    BOOLEAN DEFAULT TRUE,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, label_id, target_type, chat_jid, message_id)
+        );
     END IF;
 END $$;
 `

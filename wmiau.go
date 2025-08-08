@@ -1021,6 +1021,57 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		dowebhook = 1
 	case *events.AppState:
 		log.Info().Str("index", fmt.Sprintf("%+v", evt.Index)).Str("actionValue", fmt.Sprintf("%+v", evt.SyncActionValue)).Msg("App state event received")
+		// Persist basic label information when available
+		if evt.SyncActionValue != nil && evt.SyncActionValue.GetLabelEditAction() != nil {
+			act := evt.SyncActionValue.GetLabelEditAction()
+			labelID := ""
+			if len(evt.Index) > 1 {
+				labelID = evt.Index[1]
+			}
+			if labelID != "" {
+				_, err := mycli.db.Exec(`
+					INSERT INTO labels (user_id, label_id, name, color, type, is_active, is_immutable, order_index, deleted)
+					VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+					ON CONFLICT (user_id,label_id) DO UPDATE SET
+					  name = EXCLUDED.name,
+					  color = EXCLUDED.color,
+					  type = EXCLUDED.type,
+					  is_active = EXCLUDED.is_active,
+					  is_immutable = EXCLUDED.is_immutable,
+					  order_index = EXCLUDED.order_index,
+					  deleted = EXCLUDED.deleted,
+					  updated_at = CURRENT_TIMESTAMP
+				`, mycli.userID, labelID, act.GetName(), act.GetColor(), act.GetType().String(), act.GetIsActive(), act.GetIsImmutable(), act.GetOrderIndex(), act.GetDeleted())
+				if err != nil {
+					log.Error().Err(err).Msg("persist label_edit")
+				}
+			}
+		}
+		// Persist label associations for chat/message
+		if evt.SyncActionValue != nil && evt.SyncActionValue.GetLabelAssociationAction() != nil {
+			labelID := ""
+			chatJID := ""
+			messageID := ""
+			if len(evt.Index) >= 3 {
+				labelID = evt.Index[1]
+				chatJID = evt.Index[2]
+			}
+			if len(evt.Index) >= 4 {
+				messageID = evt.Index[3]
+			}
+			if labelID != "" && chatJID != "" {
+				_, err := mycli.db.Exec(`
+					INSERT INTO label_associations (user_id,label_id,target_type,chat_jid,message_id,labeled)
+					VALUES ($1,$2,CASE WHEN $5 <> '' THEN 'message' ELSE 'chat' END,$3,$5,$6)
+					ON CONFLICT (user_id,label_id,target_type,chat_jid,message_id) DO UPDATE SET
+					  labeled = EXCLUDED.labeled,
+					  updated_at = CURRENT_TIMESTAMP
+				`, mycli.userID, labelID, chatJID, chatJID, messageID, evt.SyncActionValue.GetLabelAssociationAction().GetLabeled())
+				if err != nil {
+					log.Error().Err(err).Msg("persist label_association")
+				}
+			}
+		}
 	case *events.LoggedOut:
 		postmap["type"] = "Logged Out"
 		dowebhook = 1

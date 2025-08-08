@@ -4552,6 +4552,139 @@ func (s *server) Respond(w http.ResponseWriter, r *http.Request, status int, dat
 	}
 }
 
+// Labels API (stubs) — evita erro de referência enquanto implementamos a lógica
+// GET /labels
+func (s *server) ListLabels() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		userID := user.Get("Id")
+		rows, err := s.db.Queryx(`SELECT label_id, name, color, type, is_active, is_immutable, order_index, deleted FROM labels WHERE user_id=$1 ORDER BY order_index ASC`, userID)
+		if err != nil {
+			s.respondWithJSON(w, http.StatusOK, map[string]interface{}{"code": http.StatusOK, "data": map[string]interface{}{"labels": []interface{}{}}, "success": true})
+			return
+		}
+		defer rows.Close()
+		type label struct {
+			LabelID     string `db:"label_id" json:"LabelID"`
+			Name        string `db:"name" json:"Name"`
+			Color       int32  `db:"color" json:"Color"`
+			Type        string `db:"type" json:"Type"`
+			IsActive    bool   `db:"is_active" json:"IsActive"`
+			IsImmutable bool   `db:"is_immutable" json:"IsImmutable"`
+			OrderIndex  int32  `db:"order_index" json:"OrderIndex"`
+			Deleted     bool   `db:"deleted" json:"Deleted"`
+		}
+		labels := []label{}
+		for rows.Next() {
+			var l label
+			_ = rows.StructScan(&l)
+			labels = append(labels, l)
+		}
+		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{"code": http.StatusOK, "data": map[string]interface{}{"labels": labels}, "success": true})
+	}
+}
+
+// POST /labels (create/update)
+func (s *server) UpsertLabel() http.HandlerFunc {
+	type upsertReq struct {
+		Name     string `json:"Name"`
+		Color    int32  `json:"Color"`
+		Type     string `json:"Type"`
+		IsActive bool   `json:"IsActive"`
+		LabelID  string `json:"LabelID"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req upsertReq
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{"code": http.StatusBadRequest, "error": "invalid payload"})
+			return
+		}
+		if req.LabelID == "" {
+			if id, err := GenerateRandomID(); err == nil {
+				req.LabelID = id
+			}
+		}
+		user := r.Context().Value("userinfo").(Values)
+		userID := user.Get("Id")
+		_, err := s.db.Exec(`
+            INSERT INTO labels (user_id, label_id, name, color, type, is_active, is_immutable, order_index, deleted)
+            VALUES ($1,$2,$3,$4,$5,$6,false,0,false)
+            ON CONFLICT (user_id,label_id) DO UPDATE SET
+              name=EXCLUDED.name,
+              color=EXCLUDED.color,
+              type=EXCLUDED.type,
+              is_active=EXCLUDED.is_active,
+              updated_at=CURRENT_TIMESTAMP
+        `, userID, req.LabelID, req.Name, req.Color, req.Type, req.IsActive)
+		if err != nil {
+			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{"code": http.StatusInternalServerError, "error": "db error"})
+			return
+		}
+		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{"code": http.StatusOK, "data": map[string]interface{}{"LabelID": req.LabelID}, "success": true})
+	}
+}
+
+// POST /labels/chat (associate/unassociate)
+func (s *server) LabelChat() http.HandlerFunc {
+	type reqBody struct {
+		JID     string `json:"JID"`
+		LabelID string `json:"LabelID"`
+		Labeled bool   `json:"Labeled"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req reqBody
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{"code": http.StatusBadRequest, "error": "invalid payload"})
+			return
+		}
+		user := r.Context().Value("userinfo").(Values)
+		userID := user.Get("Id")
+		_, err := s.db.Exec(`
+            INSERT INTO label_associations (user_id,label_id,target_type,chat_jid,message_id,labeled)
+            VALUES ($1,$2,'chat',$3,'',$4)
+            ON CONFLICT (user_id,label_id,target_type,chat_jid,message_id) DO UPDATE SET
+              labeled=EXCLUDED.labeled,
+              updated_at=CURRENT_TIMESTAMP
+        `, userID, req.LabelID, req.JID, req.Labeled)
+		if err != nil {
+			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{"code": http.StatusInternalServerError, "error": "db error"})
+			return
+		}
+		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{"code": http.StatusOK, "data": map[string]interface{}{"updated": true}, "success": true})
+	}
+}
+
+// POST /labels/message (associate/unassociate)
+func (s *server) LabelMessage() http.HandlerFunc {
+	type reqBody struct {
+		JID       string `json:"JID"`
+		MessageID string `json:"MessageID"`
+		LabelID   string `json:"LabelID"`
+		Labeled   bool   `json:"Labeled"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req reqBody
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.respondWithJSON(w, http.StatusBadRequest, map[string]interface{}{"code": http.StatusBadRequest, "error": "invalid payload"})
+			return
+		}
+		user := r.Context().Value("userinfo").(Values)
+		userID := user.Get("Id")
+		_, err := s.db.Exec(`
+            INSERT INTO label_associations (user_id,label_id,target_type,chat_jid,message_id,labeled)
+            VALUES ($1,$2,'message',$3,$4,$5)
+            ON CONFLICT (user_id,label_id,target_type,chat_jid,message_id) DO UPDATE SET
+              labeled=EXCLUDED.labeled,
+              updated_at=CURRENT_TIMESTAMP
+        `, userID, req.LabelID, req.JID, req.MessageID, req.Labeled)
+		if err != nil {
+			s.respondWithJSON(w, http.StatusInternalServerError, map[string]interface{}{"code": http.StatusInternalServerError, "error": "db error"})
+			return
+		}
+		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{"code": http.StatusOK, "data": map[string]interface{}{"updated": true}, "success": true})
+	}
+}
+
 // Validate message fields
 func validateMessageFields(phone string, stanzaid *string, participant *string) (types.JID, error) {
 

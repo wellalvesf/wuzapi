@@ -1377,7 +1377,137 @@ paths:
               schema:
                 example: { "code": 200, "data": { "Details": "Participants updated successfully" }, "success": true }
 
+  /labels:
+    get:
+      tags:
+        - Labels
+      summary: List labels
+      description: Returns user labels (if any).
+      security:
+        - ApiKeyAuth: []
+      responses:
+        200:
+          description: Response
+          content:
+            application/json:
+              schema:
+                example: { "code": 200, "data": { "labels": [] }, "success": true }
+    post:
+      tags:
+        - Labels
+      summary: Create or update a label
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/LabelUpsert'
+            example:
+              Name: "VIP"
+              Color: 16711680
+              Type: "CUSTOM"
+              IsActive: true
+      responses:
+        501:
+          description: Not Implemented
+          content:
+            application/json:
+              schema:
+                example: { "code": 501, "error": "labels endpoint not implemented yet", "success": false }
+
+  /labels/chat:
+    post:
+      tags:
+        - Labels
+      summary: Associate or remove a label from a chat
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/LabelAssociationChat'
+            example:
+              JID: "5521999999999@s.whatsapp.net"
+              LabelID: "3"
+              Labeled: true
+      responses:
+        501:
+          description: Not Implemented
+          content:
+            application/json:
+              schema:
+                example: { "code": 501, "error": "labels chat endpoint not implemented yet", "success": false }
+
+  /labels/message:
+    post:
+      tags:
+        - Labels
+      summary: Associate or remove a label from a message
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/LabelAssociationMessage'
+            example:
+              JID: "5521999999999@s.whatsapp.net"
+              MessageID: "3EB0C09054C6DC3F399BA6EBA6321625E67341CB"
+              LabelID: "5"
+              Labeled: true
+      responses:
+        501:
+          description: Not Implemented
+          content:
+            application/json:
+              schema:
+                example: { "code": 501, "error": "labels message endpoint not implemented yet", "success": false }
+
 definitions:
+  LabelUpsert:
+    type: object
+    properties:
+      Name:
+        type: string
+      Color:
+        type: integer
+      Type:
+        type: string
+        enum: [NONE, UNREAD, GROUPS, FAVORITES, PREDEFINED, CUSTOM, COMMUNITY, SERVER_ASSIGNED]
+      IsActive:
+        type: boolean
+      LabelID:
+        type: string
+    required: [Name]
+
+  LabelAssociationChat:
+    type: object
+    properties:
+      JID:
+        type: string
+      LabelID:
+        type: string
+      Labeled:
+        type: boolean
+    required: [JID, LabelID, Labeled]
+
+  LabelAssociationMessage:
+    type: object
+    properties:
+      JID:
+        type: string
+      MessageID:
+        type: string
+      LabelID:
+        type: string
+      Labeled:
+        type: boolean
+    required: [JID, MessageID, LabelID, Labeled]
   User:
     type: object
     properties:

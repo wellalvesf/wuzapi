@@ -138,5 +138,11 @@ func (s *server) routes() {
 
 	s.router.Handle("/newsletter/list", c.Then(s.ListNewsletter())).Methods("GET")
 
+	// Labels (placeholders for WhatsApp Labels API)
+	s.router.Handle("/labels", c.Then(s.ListLabels())).Methods("GET")
+	s.router.Handle("/labels", c.Then(s.UpsertLabel())).Methods("POST")
+	s.router.Handle("/labels/chat", c.Then(s.LabelChat())).Methods("POST")
+	s.router.Handle("/labels/message", c.Then(s.LabelMessage())).Methods("POST")
+
 	s.router.PathPrefix("/").Handler(http.FileServer(http.Dir(exPath + "/static/")))
 }
