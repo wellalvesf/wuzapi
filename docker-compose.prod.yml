@@ -1,0 +1,48 @@
+services:
+  stevo-manager:
+    image: wellalvesf/stevo-manager:0.1.0
+    container_name: stevo-manager
+    environment:
+      - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}
+      - DB_USER=${DB_USER:-wuzapi}
+      - DB_PASSWORD=${DB_PASSWORD:-wuzapi}
+      - DB_NAME=${DB_NAME:-wuzapi}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - TZ=America/Sao_Paulo
+      - WEBHOOK_FORMAT=json
+      - SESSION_DEVICE_NAME=StevoManager
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - stevo-net
+
+  db:
+    image: postgres:16
+    container_name: stevo-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-wuzapi}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-wuzapi}
+      POSTGRES_DB: ${DB_NAME:-wuzapi}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-wuzapi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - stevo-net
+
+networks:
+  stevo-net:
+    driver: bridge
+
+volumes:
+  db_data:
+

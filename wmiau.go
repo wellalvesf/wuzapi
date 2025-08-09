@@ -56,6 +56,7 @@ func sendToGlobalWebHook(jsonData []byte, token string, userID string) {
 			"token":        token,
 			"userID":       userID,
 			"instanceName": instance_name,
+			"serverUrl":    os.Getenv("SERVER_URL"),
 		}
 		callHook(*globalWebhook, globalData, userID)
 	}
@@ -72,6 +73,8 @@ func sendToUserWebHook(webhookurl string, path string, jsonData []byte, userID s
 		"jsonData":     string(jsonData),
 		"token":        token,
 		"instanceName": instance_name,
+		"userID":       userID,
+		"serverUrl":    os.Getenv("SERVER_URL"),
 	}
 
 	log.Debug().Interface("webhookData", data).Msg("Data being sent to webhook")
@@ -184,7 +187,12 @@ func sendEventWithWebHook(mycli *MyClient, postmap map[string]interface{}, path 
 	// Get global webhook if configured
 	go sendToGlobalWebHook(jsonData, mycli.token, mycli.userID)
 
-	go sendToGlobalRabbit(jsonData)
+	// Publish to RabbitMQ with event type for filtering/routing
+	evt := ""
+	if t, ok := postmap["type"].(string); ok {
+		evt = t
+	}
+	go sendToGlobalRabbit(jsonData, evt, mycli.token, mycli.userID)
 }
 
 func checkIfSubscribedToEvent(subscribedEvents []string, eventType string, userId string) bool {

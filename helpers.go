@@ -49,7 +49,19 @@ func callHook(myurl string, payload map[string]string, id string) {
 			var postmap map[string]interface{}
 			err := json.Unmarshal([]byte(jsonStr), &postmap)
 			if err == nil {
-				postmap["token"] = payload["token"]
+				// adiciona metadados semelhantes ao Evolution
+				if v, ok := payload["token"]; ok {
+					postmap["token"] = v
+				}
+				if v, ok := payload["serverUrl"]; ok {
+					postmap["serverUrl"] = v
+				}
+				if v, ok := payload["userID"]; ok {
+					postmap["userID"] = v
+				}
+				if v, ok := payload["instanceName"]; ok {
+					postmap["instanceName"] = v
+				}
 				body = postmap
 			}
 		}
