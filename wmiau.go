@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -591,6 +592,8 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 			log.Error().Err(err).Msg(sqlStmt)
 			return
 		}
+		// Atualiza status no Supabase para 'active'
+		go supabaseUpdateInstanceStatus(mycli.db, mycli.userID, "active")
 	case *events.PairSuccess:
 		log.Info().Str("userid", mycli.userID).Str("token", mycli.token).Str("ID", evt.ID.String()).Str("BusinessName", evt.BusinessName).Str("Platform", evt.Platform).Msg("QR Pair Success")
 		jid := evt.ID
@@ -1165,6 +1168,8 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 			log.Error().Err(err).Msg(sqlStmt)
 			return
 		}
+		// Atualiza status no Supabase para 'inactive'
+		go supabaseUpdateInstanceStatus(mycli.db, mycli.userID, "inactive")
 	case *events.ChatPresence:
 		postmap["type"] = "ChatPresence"
 		dowebhook = 1
@@ -1183,10 +1188,14 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		postmap["type"] = "Disconnected"
 		dowebhook = 1
 		log.Info().Str("reason", fmt.Sprintf("%+v", evt)).Msg("Disconnected from Whatsapp")
+		// Atualiza status no Supabase para 'inactive'
+		go supabaseUpdateInstanceStatus(mycli.db, mycli.userID, "inactive")
 	case *events.ConnectFailure:
 		postmap["type"] = "ConnectFailure"
 		dowebhook = 1
 		log.Error().Str("reason", fmt.Sprintf("%+v", evt)).Msg("Failed to connect to Whatsapp")
+		// Atualiza status no Supabase para 'inactive'
+		go supabaseUpdateInstanceStatus(mycli.db, mycli.userID, "inactive")
 	default:
 		log.Warn().Str("event", fmt.Sprintf("%+v", evt)).Msg("Unhandled event")
 	}
@@ -1194,4 +1203,39 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 	if dowebhook == 1 {
 		sendEventWithWebHook(mycli, postmap, path)
 	}
+}
+
+// supabaseUpdateInstanceStatus atualiza a coluna 'status' na tabela 'instances' (active/inactive)
+func supabaseUpdateInstanceStatus(db *sqlx.DB, userID string, status string) {
+    // lê instance_name e apikey da nossa tabela users
+    var instanceName, apiKey string
+    if err := db.QueryRow("SELECT name, token FROM users WHERE id=$1", userID).Scan(&instanceName, &apiKey); err != nil {
+        log.Debug().Err(err).Str("userID", userID).Msg("supabaseUpdateInstanceStatus: could not load instance name/token")
+        return
+    }
+    supaURL := os.Getenv("SUPABASE_URL")
+    supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
+    if supaKey == "" {
+        supaKey = os.Getenv("SUPABASE_ANON_KEY")
+    }
+    if supaURL == "" || supaKey == "" {
+        return
+    }
+    patchURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+    body := map[string]any{"status": status}
+    b, _ := json.Marshal(body)
+    hc := &http.Client{Timeout: 5 * time.Second}
+    req, _ := http.NewRequest("PATCH", patchURL, strings.NewReader(string(b)))
+    req.Header.Set("apikey", supaKey)
+    req.Header.Set("Authorization", "Bearer "+supaKey)
+    req.Header.Set("Content-Type", "application/json")
+    resp, err := hc.Do(req)
+    if err != nil {
+        log.Debug().Err(err).Msg("supabaseUpdateInstanceStatus: request failed")
+        return
+    }
+    _ = resp.Body.Close()
+    if resp.StatusCode/100 != 2 {
+        log.Debug().Int("status", resp.StatusCode).Msg("supabaseUpdateInstanceStatus: non-2xx response")
+    }
 }
