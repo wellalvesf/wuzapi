@@ -733,7 +733,7 @@ func (s *server) GetStatus() http.HandlerFunc {
 			number = baseJIDStr[:idx]
 		}
 
-		// Persistir no Supabase (instances): numero_conectado, profile_name, profile_pic_url
+		// Persistir no Supabase (instances): numero_conectado, profile_name, profile_pic_url e status
 		// Fazemos de forma assíncrona para não impactar o tempo de resposta do status
 		func() {
 			// só tenta quando temos um id válido
@@ -754,11 +754,22 @@ func (s *server) GetStatus() http.HandlerFunc {
 				return
 			}
 			patchURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
-			payload := map[string]any{
-				"numero_conectado": number,
-				"profile_name":     profileName,
-				"profile_pic_url":  avatarURL,
+			payload := map[string]any{}
+			if number != "" {
+				payload["numero_conectado"] = number
 			}
+			if profileName != "" {
+				payload["profile_name"] = profileName
+			}
+			if avatarURL != "" {
+				payload["profile_pic_url"] = avatarURL
+			}
+			// Status: active se conectado/logado, senão inactive
+			statusVal := "inactive"
+			if isConnected || isLoggedIn {
+				statusVal = "active"
+			}
+			payload["status"] = statusVal
 			go func() {
 				b, _ := json.Marshal(payload)
 				hc := &http.Client{Timeout: 5 * time.Second}
@@ -768,12 +779,12 @@ func (s *server) GetStatus() http.HandlerFunc {
 				reqPatch.Header.Set("Content-Type", "application/json")
 				resp, err := hc.Do(reqPatch)
 				if err != nil {
-					log.Warn().Err(err).Msg("Supabase persistence (status) failed")
+					log.Info().Err(err).Msg("Supabase persistence (status) failed")
 					return
 				}
 				_ = resp.Body.Close()
 				if resp.StatusCode/100 != 2 {
-					log.Warn().Int("status", resp.StatusCode).Msg("Supabase persistence (status) non-2xx")
+					log.Info().Int("status", resp.StatusCode).Msg("Supabase persistence (status) non-2xx")
 				}
 			}()
 		}()

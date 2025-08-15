@@ -575,21 +575,20 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 	case *events.Connected, *events.PushNameSetting:
 		postmap["type"] = "Connected"
 		dowebhook = 1
-		if len(mycli.WAClient.Store.PushName) == 0 {
-			break
-		}
-		// Send presence available when connecting and when the pushname is changed.
-		// This makes sure that outgoing messages always have the right pushname.
-		err := mycli.WAClient.SendPresence(types.PresenceAvailable)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to send available presence")
-		} else {
-			log.Info().Msg("Marked self as available")
+		// Envia presença apenas se houver PushName conhecido; mas a mudança de status não depende disso
+		if len(mycli.WAClient.Store.PushName) > 0 {
+			// Send presence available when connecting and when the pushname is changed.
+			// This makes sure that outgoing messages always have the right pushname.
+			if err := mycli.WAClient.SendPresence(types.PresenceAvailable); err != nil {
+				log.Warn().Err(err).Msg("Failed to send available presence")
+			} else {
+				log.Info().Msg("Marked self as available")
+			}
 		}
 		sqlStmt := `UPDATE users SET connected=1 WHERE id=$1`
-		_, err = mycli.db.Exec(sqlStmt, mycli.userID)
-		if err != nil {
-			log.Error().Err(err).Msg(sqlStmt)
+		_, dberr := mycli.db.Exec(sqlStmt, mycli.userID)
+		if dberr != nil {
+			log.Error().Err(dberr).Msg(sqlStmt)
 			return
 		}
 		// Atualiza status no Supabase para 'active'
@@ -1207,35 +1206,35 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 
 // supabaseUpdateInstanceStatus atualiza a coluna 'status' na tabela 'instances' (active/inactive)
 func supabaseUpdateInstanceStatus(db *sqlx.DB, userID string, status string) {
-    // lê instance_name e apikey da nossa tabela users
-    var instanceName, apiKey string
-    if err := db.QueryRow("SELECT name, token FROM users WHERE id=$1", userID).Scan(&instanceName, &apiKey); err != nil {
-        log.Debug().Err(err).Str("userID", userID).Msg("supabaseUpdateInstanceStatus: could not load instance name/token")
-        return
-    }
-    supaURL := os.Getenv("SUPABASE_URL")
-    supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
-    if supaKey == "" {
-        supaKey = os.Getenv("SUPABASE_ANON_KEY")
-    }
-    if supaURL == "" || supaKey == "" {
-        return
-    }
-    patchURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
-    body := map[string]any{"status": status}
-    b, _ := json.Marshal(body)
-    hc := &http.Client{Timeout: 5 * time.Second}
-    req, _ := http.NewRequest("PATCH", patchURL, strings.NewReader(string(b)))
-    req.Header.Set("apikey", supaKey)
-    req.Header.Set("Authorization", "Bearer "+supaKey)
-    req.Header.Set("Content-Type", "application/json")
-    resp, err := hc.Do(req)
-    if err != nil {
-        log.Debug().Err(err).Msg("supabaseUpdateInstanceStatus: request failed")
-        return
-    }
-    _ = resp.Body.Close()
-    if resp.StatusCode/100 != 2 {
-        log.Debug().Int("status", resp.StatusCode).Msg("supabaseUpdateInstanceStatus: non-2xx response")
-    }
+	// lê instance_name e apikey da nossa tabela users
+	var instanceName, apiKey string
+	if err := db.QueryRow("SELECT name, token FROM users WHERE id=$1", userID).Scan(&instanceName, &apiKey); err != nil {
+		log.Debug().Err(err).Str("userID", userID).Msg("supabaseUpdateInstanceStatus: could not load instance name/token")
+		return
+	}
+	supaURL := os.Getenv("SUPABASE_URL")
+	supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
+	if supaKey == "" {
+		supaKey = os.Getenv("SUPABASE_ANON_KEY")
+	}
+	if supaURL == "" || supaKey == "" {
+		return
+	}
+	patchURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+	body := map[string]any{"status": status}
+	b, _ := json.Marshal(body)
+	hc := &http.Client{Timeout: 5 * time.Second}
+	req, _ := http.NewRequest("PATCH", patchURL, strings.NewReader(string(b)))
+	req.Header.Set("apikey", supaKey)
+	req.Header.Set("Authorization", "Bearer "+supaKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := hc.Do(req)
+	if err != nil {
+		log.Debug().Err(err).Msg("supabaseUpdateInstanceStatus: request failed")
+		return
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		log.Debug().Int("status", resp.StatusCode).Msg("supabaseUpdateInstanceStatus: non-2xx response")
+	}
 }
