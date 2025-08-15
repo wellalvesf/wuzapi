@@ -55,6 +55,16 @@ var migrations = []Migration{
 		Name:  "add_labels_tables",
 		UpSQL: addLabelsTablesSQL,
 	},
+	{
+		ID:    6,
+		Name:  "add_ignore_groups",
+		UpSQL: addIgnoreGroupsSQL,
+	},
+	{
+		ID:    7,
+		Name:  "add_logo_url",
+		UpSQL: addLogoURLSQL,
+	},
 }
 
 const changeIDToStringSQL = `
@@ -179,6 +189,32 @@ BEGIN
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (user_id, label_id, target_type, chat_jid, message_id)
         );
+    END IF;
+END $$;
+`
+
+const addIgnoreGroupsSQL = `
+-- PostgreSQL version
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'ignore_groups'
+    ) THEN
+        ALTER TABLE users ADD COLUMN ignore_groups BOOLEAN DEFAULT FALSE;
+    END IF;
+END $$;
+`
+
+const addLogoURLSQL = `
+-- PostgreSQL version
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'users' AND column_name = 'logo_url'
+    ) THEN
+        ALTER TABLE users ADD COLUMN logo_url TEXT DEFAULT '';
     END IF;
 END $$;
 `

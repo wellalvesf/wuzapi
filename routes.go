@@ -75,6 +75,16 @@ func (s *server) routes() {
 	s.router.Handle("/session/disconnect", c.Then(s.Disconnect())).Methods("POST")
 	s.router.Handle("/session/logout", c.Then(s.Logout())).Methods("POST")
 	s.router.Handle("/session/status", c.Then(s.GetStatus())).Methods("GET")
+	s.router.Handle("/session/egress-ip", c.Then(s.GetEgressIP())).Methods("GET")
+	s.router.Handle("/session/profile", c.Then(s.GetMyProfile())).Methods("GET")
+	s.router.Handle("/user/profile", c.Then(s.GetUserProfile())).Methods("POST")
+	s.router.Handle("/settings/ignore-groups", c.Then(s.SetIgnoreGroups())).Methods("POST")
+	s.router.Handle("/session/branding", c.Then(s.SetBranding())).Methods("POST")
+	// GHL Integration
+	s.router.Handle("/integration/ghl/connect", c.Then(s.GHLConnect())).Methods("POST", "OPTIONS")
+	s.router.Handle("/integration/ghl/status", c.Then(s.GHLStatus())).Methods("GET")
+	s.router.Handle("/integration/ghl/disconnect", c.Then(s.GHLDisconnect())).Methods("POST")
+	s.router.Handle("/integration/ghl/settings", c.Then(s.GHLUpdateSettings())).Methods("POST")
 	s.router.Handle("/session/qr", c.Then(s.GetQR())).Methods("GET")
 	s.router.Handle("/session/pairphone", c.Then(s.PairPhone())).Methods("POST")
 	s.router.Handle("/session/history", c.Then(s.RequestHistorySync())).Methods("GET")
@@ -96,7 +106,7 @@ func (s *server) routes() {
 	s.router.Handle("/chat/send/image", c.Then(s.SendImage())).Methods("POST")
 	s.router.Handle("/chat/send/audio", c.Then(s.SendAudio())).Methods("POST")
 	s.router.Handle("/chat/send/document", c.Then(s.SendDocument())).Methods("POST")
-	//	s.router.Handle("/chat/send/template", c.Then(s.SendTemplate())).Methods("POST")
+	s.router.Handle("/chat/send/template", c.Then(s.SendTemplate())).Methods("POST")
 	s.router.Handle("/chat/send/video", c.Then(s.SendVideo())).Methods("POST")
 	s.router.Handle("/chat/send/sticker", c.Then(s.SendSticker())).Methods("POST")
 	s.router.Handle("/chat/send/location", c.Then(s.SendLocation())).Methods("POST")
@@ -119,6 +129,10 @@ func (s *server) routes() {
 	s.router.Handle("/chat/downloadvideo", c.Then(s.DownloadVideo())).Methods("POST")
 	s.router.Handle("/chat/downloadaudio", c.Then(s.DownloadAudio())).Methods("POST")
 	s.router.Handle("/chat/downloaddocument", c.Then(s.DownloadDocument())).Methods("POST")
+	s.router.Handle("/chat/downloadsticker", c.Then(s.DownloadSticker())).Methods("POST")
+
+	// Utility: get base64 by message ID when media is still available
+	s.router.Handle("/chat/getbase64", c.Then(s.GetBase64ByMessageID())).Methods("POST")
 
 	s.router.Handle("/group/create", c.Then(s.CreateGroup())).Methods("POST")
 	s.router.Handle("/group/list", c.Then(s.ListGroups())).Methods("GET")

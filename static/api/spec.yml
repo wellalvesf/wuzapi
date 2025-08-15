@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
-  title: WUZAPI
-  description: "WUZAPI implements a multi user and multi device REST API for WhatsApp.\n\n<h2>Authentication</h2><ul><li>Standard Endpoints: Include the token header with a valid user token (matches tokens stored in the users database table).</li><li>Admin Endpoints: Use the Authorization header with the admin token (set in .env as WUZAPI_ADMIN_TOKEN).</li></ul><h2>Admin Setup:</h2>You can manage users and do some tests by using the builtin dashboard [here](/dashboard).<h3>Add a Sample User via API</h3>Run this command to create a test user:<pre><code>curl -X POST http://localhost:8080/admin/users \\ \n-H \"Authorization: $WUZAPI_ADMIN_TOKEN\" \\ \n-H \"Content-Type: application/json\" \\ \n-d '{\"name\": \"John\", \"token\": \"Z1234ABCCXD\"}' </code> </pre>\n\n<h2>Webhook Configuration</h2>To receive WhatsApp messages:<ul><li>Host your own server (to process incoming messages).</li><li>Set its URL as the webhook via the [webhook](#Webhook) API call.</li></ul><h2>Phone number format:</h2><ul><li>Required: Country code (e.g. <b>5491155553934</b> for Argentina</li><li>Do not prefix with a plus sign (+), as natively whatsapp requires no plus sign prefix.</li></ul>"
+  title: Stevo Manager API
+  description: "API do usuário Stevo Manager.\n\n<h2>Autenticação</h2><ul><li>Inclua o header <code>token</code> com o seu token de usuário.</li></ul><h2>Webhook</h2><ul><li>Configure sua URL via endpoint <a href=\"#tag/Webhook\">Webhook</a> para receber eventos e mensagens.</li></ul><h2>Formatação de número</h2><ul><li>Use DDI+DDD+número sem + (ex.: 5511999999999).</li></ul>"
   version: '3.0.0'
   termsOfService: ''
    
@@ -13,108 +13,6 @@ servers:
     description: Current host
 
 paths:
-  /admin/users:
-    get:
-      tags:
-        - Admin
-      summary: List users
-      description: Retrieve a list of users from the database, displaying also connection status and other info.
-      security:
-        - AdminAuth: []
-      responses:
-        200:
-          description: A JSON array of user objects
-          content:
-            application/json:
-              schema:
-                example: { "code": 200, "data": [ { "connected": true, "events": "All", "expiration": 0, "id": "bec45bb93cbd24cbec32941ec3c93a12", "jid": "5491155551122:12@s.whatsapp.net", "loggedIn": true, "name": "Some User", "proxy_url": "", "qrcode": "", "token": "d030sl9aDL39sl3075zz", "webhook": "https://some.domain/webhook" } ], "success": true }
-    post:
-      tags:
-        - Admin
-      summary: Create a new user
-      description: Add a new user to the database.
-      security:
-        - AdminAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/definitions/CreateUser'
-      responses:
-        201:
-          description: User created
-          content:
-            application/json:
-              schema:
-                $ref: '#/definitions/User'
-              example:
-                code: 201
-                data:
-                  id: "5663e0c52063ec35d0ba45f7c2011c06"
-                  name: "John Doe"
-                  token: "1234ABCD"
-                  webhook: "https://webhook.site/1234567890"
-                  events: "All"
-                  proxy_config:
-                    enabled: true
-                    proxy_url: "https://serverproxy.com:9080"
-                  s3_config:
-                    enabled: true
-                    endpoint: "https://s3.amazonaws.com"
-                    region: "us-east-1"
-                    bucket: "my-bucket"
-                    access_key: "***"
-                    path_style: true
-                    public_url: "https://s3.amazonaws.com"
-                    media_delivery: "both"
-                    retention_days: 30
-  /admin/users/{id}:
-    delete:
-      tags:
-        - Admin
-      summary: Delete a user from DB
-      description: Deletes a user by their ID.
-      security:
-        - AdminAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: ID of the user to delete
-          schema:
-            type: string
-            example: 4e4942c7dee1deef99ab8fd9f7350de5
-      responses:
-        200:
-          description: User deleted
-          content:
-            application/json:
-              schema:
-                example: {"code":200,"data":{"id":"6b927654cada7635a4586bf8fad260a3"},"details":"User deleted successfully","success":true}
-  /admin/users/{id}/full:
-    delete:
-      tags:
-        - Admin
-      summary: Delete a user from DB and S3, logout and disconnect from whatsapp and clear it up from memory
-      description: Deletes a user by their ID, including login out, disconnect and memory cleanup Also removes all user files from S3.
-      security:
-        - AdminAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          description: ID of the user to delete
-          schema:
-            type: string
-            example: 4e4942c7dee1deef99ab8fd9f7350de5
-      responses:
-        200:
-          description: User deleted
-          content:
-            application/json:
-              schema:
-                example: {"code":200,"data":{"id":"4e4942c7dee1deef99ab8fd9f7350de5","jid":"","name":"mariano"},"details":"User instance removed completely","success":true}
   /newsletter/list:
     get:
       tags:
@@ -304,6 +202,21 @@ paths:
             application/json:
               schema:
                 example: { "code": 200, "data": { "Connected": true, "LoggedIn": true }, "success": true }
+  /session/profile:
+    get:
+      tags:
+        - Session 
+      summary: Gets current instance profile
+      description: Returns the current instance profile name and avatar URL.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        200:
+          description: Response
+          content:
+            application/json:
+              schema:
+                example: { "jid": "5511999999999@s.whatsapp.net", "number": "5511999999999", "profileName": "John Doe", "profilePicUrl": "https://pps.whatsapp.net/..." }
   /session/pairphone:
     post:
       tags:
@@ -560,6 +473,75 @@ paths:
             application/json:
               schema:
                 example: { "URL": "https://pps.whatsapp.net/v/t61.24694-24/227295214_112447507729487_4643695328050510566_n.jpg?stp=dst-jpg_s96x96&ccb=11-4&oh=ja432434a91e8f41d86d341bx889c217&oe=543222A4", "ID": "1645308319", "Type": "preview", "DirectPath": "/v/t61.24694-24/227295214_112447507729487_4643695328050510566_n.jpg?stp=dst-jpg_s96x96&ccb=11-4&oh=ja432434a91e8f41d86d341ba889c217&oe=543222A4" }
+  /user/profile:
+    post:
+      tags:
+        - User
+      summary: Gets profile info (name and avatar) by number or JID
+      description: Accepts a phone number (DDI+DDD+número) or a full JID and returns profile name and avatar URL.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                phone:
+                  type: string
+                  example: "5511999999999"
+                preview:
+                  type: boolean
+                  example: true
+              required:
+                - phone
+      responses:
+        200:
+          description: Response
+          content:
+            application/json:
+              schema:
+                example: { "jid": "5511999999999@s.whatsapp.net", "number": "5511999999999", "profileName": "John Doe", "profilePicUrl": "https://pps.whatsapp.net/..." }
+        400:
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                example: { "code": 400, "error": "invalid payload", "success": false }
+  /settings/ignore-groups:
+    post:
+      tags:
+        - Settings
+      summary: Toggle ignoring group messages
+      description: Sets whether incoming group messages should be ignored.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ignore:
+                  type: boolean
+                  example: true
+              required:
+                - ignore
+      responses:
+        200:
+          description: Response
+          content:
+            application/json:
+              schema:
+                example: { "code": 200, "data": { "Details": "Updated", "ignore": true }, "success": true }
+        400:
+          description: Invalid payload
+          content:
+            application/json:
+              schema:
+                example: { "code": 400, "error": "invalid payload", "success": false }
   /user/contacts:
     get:
       tags:
@@ -1035,6 +1017,50 @@ paths:
             application/json:
               schema:
                 example: {"code":200,"data":{"Data":"data:application/pdf;base64,iVBORw0KGgoA5CYII...=","Mimetype":"application/pdf"},"success":true}
+  /chat/downloadaudio:
+    post:
+      tags:
+        - Chat 
+      summary: Downloads Audio from message
+      description: Downloads an Audio from a message and returns it Base64 media encoded
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/DownloadImage'
+
+      responses:
+        200:
+          description: Response
+          content:
+            application/json:
+              schema:
+                example: {"code":200,"data":{"Data":"data:audio/ogg; codecs=opus;base64,T2dnUwACAAAAAAAAA...=","Mimetype":"audio/ogg; codecs=opus"},"success":true}
+  /chat/downloadsticker:
+    post:
+      tags:
+        - Chat 
+      summary: Downloads Sticker from message
+      description: Downloads a Sticker (WebP) from a message and returns it Base64 media encoded
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/definitions/DownloadImage'
+
+      responses:
+        200:
+          description: Response
+          content:
+            application/json:
+              schema:
+                example: {"code":200,"data":{"Data":"data:image/webp;base64,UklGRiIAAABXRUJQVlA4ICgAAA...=","Mimetype":"image/webp"},"success":true}
   /chat/presence:
     post:
       tags:

@@ -1,6 +1,6 @@
 services:
   stevo-manager:
-    image: wellalvesf/stevo-manager:0.1.0
+    image: wellalvesf/stevo-manager:1.0.6
     container_name: stevo-manager
     environment:
       - WUZAPI_ADMIN_TOKEN=${WUZAPI_ADMIN_TOKEN}

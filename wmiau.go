@@ -23,6 +23,7 @@ import (
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/appstate"
 	"go.mau.fi/whatsmeow/proto/waCompanionReg"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -386,8 +387,14 @@ func (s *server) startClient(userID string, textjid string, token string, subscr
 		deviceStore = container.NewDevice()
 	}
 
-	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_UNKNOWN.Enum()
-	store.DeviceProps.Os = osName
+	// Define um tipo/plataforma reconhecido pelo WhatsApp para evitar "Outro dispositivo"
+	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
+	// Usa SESSION_DEVICE_OS (Windows/Mac OS/Linux). Default: Windows
+	deviceOS := os.Getenv("SESSION_DEVICE_OS")
+	if deviceOS == "" {
+		deviceOS = "Windows"
+	}
+	store.DeviceProps.Os = &deviceOS
 
 	clientManager.SetWhatsmeowClient(userID, client)
 	mycli := MyClient{client, 1, userID, token, subscriptions, s.db}
@@ -412,10 +419,13 @@ func (s *server) startClient(userID string, textjid string, token string, subscr
 		}
 	})
 
-	// NEW: set proxy if defined in DB (assumes users table contains proxy_url column)
-	var proxyURL string
-	err = s.db.Get(&proxyURL, "SELECT proxy_url FROM users WHERE id=$1", userID)
-	if err == nil && proxyURL != "" {
+	// Proxy: se DEFAULT_PROXY_URL estiver setado, ele tem prioridade
+	// Caso contrário, usa o proxy específico da instância (users.proxy_url)
+	proxyURL := os.Getenv("DEFAULT_PROXY_URL")
+	if proxyURL == "" {
+		_ = s.db.Get(&proxyURL, "SELECT COALESCE(proxy_url,'') FROM users WHERE id=$1", userID)
+	}
+	if proxyURL != "" {
 		httpClient.SetProxy(proxyURL)
 	}
 	clientManager.SetHTTPClient(userID, httpClient)
@@ -606,6 +616,13 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		return
 	case *events.Message:
 
+		// Ignora mensagens de grupos se o usuário tiver ativado a opção
+		var ignoreGroups bool
+		_ = mycli.db.Get(&ignoreGroups, "SELECT COALESCE(ignore_groups,false) FROM users WHERE id=$1", mycli.userID)
+		if ignoreGroups && evt.Info.Chat.Server == "g.us" {
+			return
+		}
+
 		var s3Config struct {
 			Enabled       string `db:"s3_enabled"`
 			MediaDelivery string `db:"media_delivery"`
@@ -626,7 +643,64 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 		}
 
 		postmap["type"] = "Message"
+		// Deriva messageType (similar à Evolution)
+		var getInner func(*waE2E.Message) *waE2E.Message
+		getInner = func(m *waE2E.Message) *waE2E.Message {
+			if m.GetViewOnceMessage() != nil && m.GetViewOnceMessage().Message != nil {
+				return getInner(m.GetViewOnceMessage().Message)
+			}
+			if m.GetViewOnceMessageV2() != nil && m.GetViewOnceMessageV2().Message != nil {
+				return getInner(m.GetViewOnceMessageV2().Message)
+			}
+			if m.GetEphemeralMessage() != nil && m.GetEphemeralMessage().Message != nil {
+				return getInner(m.GetEphemeralMessage().Message)
+			}
+			return m
+		}
+		inner := getInner(evt.Message)
+		msgType := "unknown"
+		switch {
+		case inner.GetConversation() != "":
+			msgType = "text"
+		case inner.GetExtendedTextMessage() != nil && inner.GetExtendedTextMessage().GetText() != "":
+			msgType = "text"
+		case inner.GetImageMessage() != nil:
+			msgType = "image"
+		case inner.GetVideoMessage() != nil:
+			msgType = "video"
+		case inner.GetAudioMessage() != nil:
+			msgType = "audio"
+		case inner.GetDocumentMessage() != nil:
+			msgType = "document"
+		case inner.GetStickerMessage() != nil:
+			msgType = "sticker"
+		case inner.GetLocationMessage() != nil || inner.GetLiveLocationMessage() != nil:
+			msgType = "location"
+		case inner.GetContactMessage() != nil || inner.GetContactsArrayMessage() != nil:
+			msgType = "contact"
+		case inner.GetButtonsMessage() != nil:
+			msgType = "buttons"
+		case inner.GetTemplateMessage() != nil:
+			msgType = "template"
+		case inner.GetInteractiveMessage() != nil:
+			msgType = "interactive"
+		case inner.GetListMessage() != nil:
+			msgType = "list"
+		case inner.GetPollCreationMessage() != nil:
+			msgType = "poll"
+		case inner.GetReactionMessage() != nil:
+			msgType = "reaction"
+		}
+		postmap["messageType"] = msgType
 		dowebhook = 1
+
+		// Define uma política efetiva para entrega de mídia
+		// Se S3 estiver desabilitado, forçamos base64 como padrão quando o valor estiver vazio ou incorretamente setado para "s3"
+		effectiveMediaDelivery := s3Config.MediaDelivery
+		if s3Config.Enabled != "true" && (effectiveMediaDelivery == "" || effectiveMediaDelivery == "s3") {
+			effectiveMediaDelivery = "base64"
+		}
+		log.Debug().Str("s3_enabled", s3Config.Enabled).Str("media_delivery", s3Config.MediaDelivery).Str("effective_media_delivery", effectiveMediaDelivery).Msg("Media delivery policy")
 		metaParts := []string{fmt.Sprintf("pushname: %s", evt.Info.PushName), fmt.Sprintf("timestamp: %s", evt.Info.Timestamp)}
 		if evt.Info.Type != "" {
 			metaParts = append(metaParts, fmt.Sprintf("type: %s", evt.Info.Type))
@@ -701,7 +775,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Convert the image to base64 if needed
-				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+				if effectiveMediaDelivery == "base64" || effectiveMediaDelivery == "both" {
 					base64String, mimeType, err := fileToBase64(tmpPath)
 					if err != nil {
 						log.Error().Err(err).Msg("Failed to convert image to base64")
@@ -789,7 +863,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Convert the audio to base64 if needed
-				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+				if effectiveMediaDelivery == "base64" || effectiveMediaDelivery == "both" {
 					base64String, mimeType, err := fileToBase64(tmpPath)
 					if err != nil {
 						log.Error().Err(err).Msg("Failed to convert audio to base64")
@@ -882,7 +956,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Convert the document to base64 if needed
-				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+				if effectiveMediaDelivery == "base64" || effectiveMediaDelivery == "both" {
 					base64String, mimeType, err := fileToBase64(tmpPath)
 					if err != nil {
 						log.Error().Err(err).Msg("Failed to convert document to base64")
@@ -964,7 +1038,7 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 				}
 
 				// Convert the video to base64 if needed
-				if s3Config.MediaDelivery == "base64" || s3Config.MediaDelivery == "both" {
+				if effectiveMediaDelivery == "base64" || effectiveMediaDelivery == "both" {
 					base64String, mimeType, err := fileToBase64(tmpPath)
 					if err != nil {
 						log.Error().Err(err).Msg("Failed to convert video to base64")

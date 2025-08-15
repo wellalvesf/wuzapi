@@ -1,14 +1,51 @@
+#modalGHLSettings .ui.very.relaxed.divided.list .item { padding: 14px 8px; border-bottom: 1px solid rgba(0,255,163,0.06); }
+#modalGHLSettings .ui.very.relaxed.divided.list .item:last-child { border-bottom: none; }
+#modalGHLSettings .ui.very.relaxed.divided.list .header { color: var(--heading-color); font-weight: 600; }
+#modalGHLSettings .ui.very.relaxed.divided.list .description { color: var(--muted-color); }
+#ghlConnInfo.ui.tiny.label { background: rgba(0,255,163,0.12); color: var(--heading-color); border: 1px solid rgba(0,255,163,0.24); }
+
+/* Espaçamento e hierarquia acima do header dentro da aba */
+#modalGHLSettings .ui.tab .ui.header { margin-top: 10px; margin-bottom: 16px; }
+
+/* Alinhamento dos toggles à direita, largura consistente */
+#modalGHLSettings .ui.very.relaxed.divided.list .item { display: flex; align-items: center; justify-content: space-between; }
+#modalGHLSettings .ui.very.relaxed.divided.list .item .content { flex: 1 1 auto; padding-right: 16px; }
+#modalGHLSettings .ui.very.relaxed.divided.list .item .extra { flex: 0 0 140px; display: flex; justify-content: flex-end; }
+
+/* Visibilidade do estado OFF dos toggles em tema dark */
+#modalGHLSettings .ui.toggle.checkbox label:before { 
+  background: rgba(255,255,255,0.08) !important; /* trilho visível no off */
+  border: 1px solid rgba(255,255,255,0.18) !important;
+}
+#modalGHLSettings .ui.toggle.checkbox input:checked~label:before {
+  background-color: var(--primary-color) !important; /* on */
+  border-color: transparent !important;
+}
+#modalGHLSettings .ui.toggle.checkbox label:after {
+  background: #fff !important; /* knob sempre branco para contraste */
+  box-shadow: 0 2px 6px rgba(0,0,0,0.35) !important;
+}
+
+/* Reduz levemente o tamanho para ficar mais elegante e consistente */
+#modalGHLSettings .ui.toggle.checkbox { transform: scale(0.95); transform-origin: center right; margin: 0 !important; }
 :root {
-  --primary-color: #00A884; /* WhatsApp's new brand green */
-  --secondary-color: #008069; /* WhatsApp's darker green */
-  --tertiary-color: #075E54; /* WhatsApp's darkest green */
-  --background-color: #f0f2f5;
-  --card-hover-color: #ffffff;
-  --text-color: #111B21; /* WhatsApp's text color */
-  --gradient-start: #00A884;
+  --primary-color: #00a884; /* Stevo green */
+  --secondary-color: #00c39a; /* brighter accent */
+  --tertiary-color: #0b332e; /* deep teal */
+  --background-color: #0b1210; /* dark base */
+  --background-elev-1: #0f1815;
+  --background-elev-2: #121f1b;
+  --card-hover-color: #142721;
+  --text-color: #e6fffa; /* light mint */
+  --muted-text-color: #a7c4bd;
+  --heading-color: #eafff7;
+  --body-color: #cfeee6;
+  --gradient-start: #00a884;
   --gradient-end: #008069;
-  --message-background: #FFFFFF;
-  --success-green: #00A884;
+  --message-background: #101a17;
+  --success-green: #00ffa3;
+  --grid-line: rgba(0, 255, 163, 0.08);
+  --grid-glow: rgba(0, 168, 132, 0.25);
   --gradient-primary: linear-gradient(135deg, #25d366 0%, #128c7e 100%);
 }
 
@@ -16,6 +53,34 @@ body {
   background-color: var(--background-color) !important;
   color: var(--text-color) !important;
   font-family: "Helvetica Neue", "Helvetica Neue", Helvetica, Arial, sans-serif !important;
+  position: relative;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Neon grid + green glow background */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  background:
+    radial-gradient(60vw 60vw at 10% -10%, var(--grid-glow), transparent 60%),
+    radial-gradient(50vw 50vw at 110% 10%, rgba(0, 255, 163, 0.15), transparent 60%),
+    radial-gradient(40vw 40vw at 50% 120%, rgba(0, 168, 132, 0.2), transparent 60%),
+    linear-gradient(180deg, #07100d 0%, #0b1210 60%, #0b1210 100%);
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image:
+    repeating-linear-gradient(0deg, var(--grid-line) 0px, var(--grid-line) 1px, transparent 1px, transparent 40px),
+    repeating-linear-gradient(90deg, var(--grid-line) 0px, var(--grid-line) 1px, transparent 1px, transparent 40px);
+  pointer-events: none;
+  mask-image: radial-gradient(circle at 50% 40%, black 0%, black 60%, transparent 90%);
 }
 
 body > .ui.logingrid {
@@ -39,22 +104,88 @@ body > .ui.logingrid {
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
 }
 
+/* Typography overrides for dark theme */
+h1, h2, h3, h4, h5,
+.ui.header {
+  color: var(--heading-color) !important;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.25);
+}
+
+p, .content, .description, .meta,
+.ui.list .item, .ui.table, .ui.message,
+.ui.card .content, .ui.segment, .ui.form,
+.ui.input > input, .ui.input > textarea {
+  color: var(--body-color) !important;
+}
+
+.ui.small.header, .ui.sub.header, .sub.header,
+.muted, .help, .hint, .ui.message .header + p {
+  color: var(--muted-text-color) !important;
+}
+
+a, a:visited { color: var(--secondary-color) !important; }
+a:hover { color: var(--success-green) !important; }
+
+.ui.label { background: rgba(0,168,132,0.12) !important; color: var(--body-color) !important; border: 1px solid rgba(0,255,163,0.15) !important; }
+.ui.label.red { background: rgba(219,40,40,0.15) !important; color: #ffd9d9 !important; }
+.ui.label.orange { background: rgba(242,113,28,0.15) !important; color: #ffe2cf !important; }
+
+/* Ribbon labels (chips nos cards) */
+.ui.ribbon.label,
+.ui.ribbon.label.brown,
+.ui.ribbon.label.green,
+.ui.ribbon.label.teal,
+.ui.ribbon.label.blue {
+  background: linear-gradient(90deg, rgba(0,168,132,0.25), rgba(0,195,154,0.2)) !important;
+  color: var(--body-color) !important;
+  border-color: rgba(0,255,163,0.2) !important;
+}
+
+.ui.toggle.checkbox label,
+.ui.checkbox label { color: var(--body-color) !important; }
+
+/* List headers e conteúdo para cards de instância */
+.ui.list .item .header,
+.ui.items .item .header,
+.ui.divided.items .item .header,
+.ui.relaxed.items .item .header {
+  color: var(--heading-color) !important;
+}
+.ui.list .item .content,
+.ui.items .item .content,
+.ui.relaxed.items .item .content {
+  color: var(--body-color) !important;
+}
+label, small, li { color: var(--body-color) !important; }
+strong, b { color: var(--heading-color) !important; }
+
+/* Inputs dark */
+.ui.form input, .ui.form textarea, .ui.input > input, .ui.input > textarea {
+  background: var(--background-elev-2) !important;
+  color: var(--body-color) !important;
+}
+.ui.form input::placeholder, .ui.form textarea::placeholder {
+  color: rgba(231, 255, 250, 0.5) !important;
+}
+
 .menu-header {
-  background: var(--primary-color) !important;
+  background: linear-gradient(90deg, rgba(0,168,132,0.25) 0%, rgba(0,195,154,0.15) 100%) !important;
   color: white !important;
   margin-bottom: 2em !important;
   box-shadow: 
-      0 20px 40px rgba(0, 168, 132, 0.2),
-      inset 0 0 80px rgba(255, 255, 255, 0.15) !important;
+      0 10px 30px rgba(0, 168, 132, 0.15),
+      inset 0 0 80px rgba(0, 168, 132, 0.15) !important;
   position: relative;
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(0, 255, 163, 0.1);
   transition: all 0.3s ease-in-out;
 }
 
 .login {
-  border-radius: 15px !important;
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1) !important;
+  border-radius: 16px !important;
+  background: var(--background-elev-1) !important;
+  border: 1px solid rgba(0,255,163,0.10) !important;
+  box-shadow: 0 24px 60px rgba(0,0,0,0.45), 0 0 0 1px rgba(0,255,163,0.04) inset !important;
   padding: 2em !important;
 }
 
@@ -64,18 +195,18 @@ body > .ui.logingrid {
 }
 
 .main-header {
-  background: var(--primary-color) !important;
+  background: linear-gradient(135deg, rgba(0,168,132,0.25), rgba(0,195,154,0.15)) !important;
   color: white !important;
   padding: 1.5em 2em !important;
   border-radius: 24px !important;
   margin-bottom: 2em !important;
   box-shadow: 
-      0 20px 40px rgba(0, 168, 132, 0.2),
-      inset 0 0 80px rgba(255, 255, 255, 0.15) !important;
+      0 20px 40px rgba(0, 168, 132, 0.15),
+      inset 0 0 80px rgba(0, 168, 132, 0.15) !important;
   position: relative;
   overflow: hidden;
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(0, 255, 163, 0.12);
   transition: all 0.3s ease-in-out;
 }
 
@@ -102,7 +233,7 @@ body > .ui.logingrid {
 }
 
 a#menulogout, a:visited#menulogout {
-  color: #000;
+  color: var(--heading-color) !important;
 }
 
 .main-header .whatsapp.icon {
@@ -134,18 +265,91 @@ a#menulogout, a:visited#menulogout {
 }
 
 .ui.cards > .card {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05) !important;
+  background: none !important;
+  background-color: var(--background-elev-1) !important; /* opaco, como antes */
+  border: 1px solid rgba(0, 255, 163, 0.10) !important;
   border-radius: 16px !important;
   margin: 0.7em !important;
-  background-color: var(--message-background) !important;
-  border: 1px solid rgba(18, 140, 126, 0.1);
+  color: var(--text-color) !important;
+  box-shadow: 0 12px 28px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.03) !important;
 }
 
 .ui.cards > .card:not(.no-hover):hover {
-  transform: translateY(-8px) !important;
-  box-shadow: 0 12px 24px rgba(18, 140, 126, 0.15) !important;
-  background-color: var(--card-hover-color) !important;
+  transform: translateY(-4px) !important;
+  box-shadow: 0 20px 44px rgba(0,0,0,0.42) !important;
+  border-color: rgba(0,255,163,0.22) !important;
+  background-color: var(--card-hover-color) !important; /* mantém hover sólido */
 }
+
+/* Segments, messages e divisores em modo dark */
+.ui.segment {
+  background: var(--background-elev-1) !important;
+  border: 1px solid rgba(0,255,163,0.08) !important;
+  color: var(--body-color) !important;
+}
+.ui.inverted.dimmer {
+  background-color: rgba(0,0,0,0.6) !important;
+}
+.ui.inverted.dimmer .ui.text.loader {
+  color: var(--heading-color) !important;
+}
+.ui.message {
+  background: var(--background-elev-2) !important;
+  border-color: rgba(0,255,163,0.08) !important;
+  color: var(--body-color) !important;
+}
+.ui.dividing.header {
+  color: var(--heading-color) !important;
+  border-bottom: 1px solid rgba(0,255,163,0.12) !important;
+}
+
+/* Botões básicos/inverted */
+.ui.basic.button,
+.ui.buttons .basic.button {
+  background: transparent !important;
+  color: var(--body-color) !important;
+  border: 1px solid rgba(0,255,163,0.25) !important;
+}
+.ui.basic.button:hover {
+  border-color: rgba(0,255,163,0.45) !important;
+  color: var(--heading-color) !important;
+}
+
+/* Tabelas em dark */
+.ui.table {
+  background: var(--background-elev-1) !important;
+  color: var(--body-color) !important;
+  border-color: rgba(0,255,163,0.08) !important;
+}
+.ui.table thead th {
+  background: var(--background-elev-2) !important;
+  color: var(--heading-color) !important;
+}
+.ui.table td, .ui.table th {
+  border-color: rgba(0,255,163,0.08) !important;
+}
+
+/* Cards internos e headers dentro de cards */
+.ui.card > .content > .header,
+.ui.cards > .card > .content > .header {
+  color: var(--heading-color) !important;
+  text-shadow: 0 1px 0 rgba(0,0,0,0.35);
+}
+.ui.card .meta, .ui.card .description {
+  color: var(--body-color) !important;
+}
+
+/* Força headers e labels dentro do card de sessão (lista vertical) */
+.ui.items .item .header, .ui.list .item .header {
+  color: var(--heading-color) !important;
+}
+.ui.items .item .content, .ui.list .item .content {
+  color: var(--body-color) !important;
+}
+
+/* Menus */
+.ui.menu .item { color: var(--body-color) !important; }
+.ui.menu .item:hover { color: var(--heading-color) !important; }
 
 .ui.horizontal.divider {
   font-size: 1.3em !important;
@@ -185,6 +389,103 @@ a#menulogout, a:visited#menulogout {
   filter: brightness(0.95);
 }
 
+/* Botão primário (Login) no tom verde tech */
+.ui.primary.button {
+  background: linear-gradient(135deg, #00a884, #00c39a) !important;
+  color: #02120e !important;
+  border: 1px solid rgba(0,255,163,0.2) !important;
+}
+.ui.primary.button:hover {
+  background: linear-gradient(135deg, #00c39a, #00a884) !important;
+}
+.ui.primary.button.disabled,
+.ui.primary.button:disabled {
+  background: rgba(0,168,132,0.35) !important;
+  color: rgba(230,255,250,0.6) !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+/* Botão secundário (Admin Login) com contorno */
+#loginAsAdminBtn.ui.button {
+  background: transparent !important;
+  color: var(--body-color) !important;
+  border: 1px solid rgba(0,255,163,0.25) !important;
+}
+#loginAsAdminBtn.ui.button:hover {
+  color: var(--heading-color) !important;
+  border-color: rgba(0,255,163,0.45) !important;
+  box-shadow: 0 8px 16px rgba(0,168,132,0.18) !important;
+}
+
+/* Separador “or” entre botões */
+.ui.fluid.buttons .or:before,
+.ui.buttons .or:before {
+  background: var(--background-elev-2) !important;
+  color: var(--muted-text-color) !important;
+  border: 1px solid rgba(0,255,163,0.10) !important;
+}
+
+/* Cabeçalho e subtítulo do login */
+.logingrid h2.ui.header { color: var(--heading-color) !important; }
+.logingrid .text-muted { color: var(--muted-text-color) !important; }
+
+/* Campo de token no login (reforça contraste) */
+#loginForm input {
+  background: var(--background-elev-2) !important;
+  border-color: rgba(0,255,163,0.12) !important;
+}
+#loginForm input::placeholder { color: rgba(231,255,250,0.55) !important; }
+
+/* Loading state do formulário de login (evita overlay branco) */
+.ui.form.loading:before,
+.ui.loading.form:before,
+.ui.segment.loading:before,
+.ui.loading.segment:before {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+}
+.ui.form.loading:after,
+.ui.loading.form:after {
+  border-color: var(--success-green) transparent transparent !important;
+}
+
+/* Estados disabled coerentes no dark */
+.ui.input > input:disabled,
+.ui.form input:disabled,
+.ui.form textarea:disabled {
+  background: var(--background-elev-2) !important;
+  color: var(--muted-text-color) !important;
+  opacity: 0.8 !important;
+}
+.ui.button.disabled,
+.ui.disabled.button {
+  background: rgba(0,168,132,0.25) !important;
+  color: rgba(230,255,250,0.6) !important;
+  border: 1px solid rgba(0,255,163,0.15) !important;
+  box-shadow: none !important;
+}
+
+/* Mensagem informativa no login */
+.logingrid .ui.info.message {
+  background: var(--background-elev-2) !important;
+  border: 1px solid rgba(0,255,163,0.12) !important;
+  color: var(--body-color) !important;
+}
+.logingrid .ui.info.message .header { color: var(--heading-color) !important; }
+
+/* Dropdown do header (ações) */
+#headerActions.menu, .ui.dropdown#headerActions .menu { background: var(--background-elev-1) !important; }
+.ui.dropdown#headerActions .menu { border: 1px solid rgba(0,255,163,0.12) !important; box-shadow: 0 12px 28px rgba(0,0,0,0.35) !important; }
+.ui.dropdown#headerActions .menu .item { color: var(--body-color) !important; }
+.ui.dropdown#headerActions .menu .item:hover { background: var(--background-elev-2) !important; color: var(--heading-color) !important; }
+
+/* Modal GHL Tabs */
+#modalGHLSettings .menu .item { color: var(--body-color) !important; }
+#modalGHLSettings .menu .active.item { color: var(--heading-color) !important; border-color: var(--primary-color) !important; }
+#modalGHLSettings .content { color: var(--body-color) !important; }
+#modalGHLSettings .ui.divided.items .item { background: rgba(0,0,0,0.25); border-radius: 10px; padding: 16px; margin-bottom: 10px; border: 1px solid rgba(0,255,163,0.08); }
+#modalGHLSettings .ui.toggle.checkbox input:checked~label:before { background-color: var(--primary-color) !important; }
+
 .ui.form input, .ui.form textarea {
   border-radius: 12px !important;
   border: 2px solid rgba(18, 140, 126, 0.1) !important;
@@ -211,27 +512,78 @@ a#menulogout, a:visited#menulogout {
 
 .ui.modal {
   border-radius: 20px !important;
-  background-color: var(--message-background) !important;
+  background-color: var(--background-elev-1) !important;
+  border: 1px solid rgba(0,255,163,0.12) !important;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.45) !important;
   overflow: hidden;
 }
 
 .ui.modal > .header {
   border-radius: 20px 20px 0 0 !important;
-  background: var(--gradient-start) !important;
-  color: white !important;
-  padding: 1.5em !important;
+  background: linear-gradient(135deg, rgba(0,168,132,0.35), rgba(0,195,154,0.22)) !important;
+  color: var(--heading-color) !important;
+  padding: 1.2em 1.6em !important;
+  border-bottom: 1px solid rgba(0,255,163,0.15) !important;
+}
+
+.ui.modal > .content {
+  background: var(--background-elev-1) !important;
+  color: var(--body-color) !important;
 }
 
 .ui.modal > .actions {
   border-radius: 0 0 20px 20px !important;
-  background-color: rgba(248, 248, 248, 0.8) !important;
-  backdrop-filter: blur(10px);
+  background-color: var(--background-elev-2) !important;
+  border-top: 1px solid rgba(0,255,163,0.12) !important;
+  backdrop-filter: blur(6px);
 }
 
 .ui.modal > .actions > .ui.button {
   font-weight: 600 !important;
   letter-spacing: 0.5px;
 }
+
+/* Form e mensagens dentro do modal */
+.ui.modal .ui.form .field > label {
+  color: var(--heading-color) !important;
+}
+.ui.modal .ui.form input,
+.ui.modal .ui.form textarea {
+  background: var(--background-elev-2) !important;
+  color: var(--body-color) !important;
+  border: 1px solid rgba(0,255,163,0.15) !important;
+}
+.ui.modal .ui.form input::placeholder,
+.ui.modal .ui.form textarea::placeholder {
+  color: rgba(231,255,250,0.55) !important;
+}
+.ui.modal .ui.message.info,
+.ui.modal .ui.info.message {
+  background: rgba(0,168,132,0.08) !important;
+  border: 1px solid rgba(0,255,163,0.15) !important;
+  color: var(--body-color) !important;
+}
+.ui.modal .ui.message .header { color: var(--heading-color) !important; }
+
+/* Dropdowns (selection) em dark */
+.ui.selection.dropdown {
+  background: var(--background-elev-2) !important;
+  color: var(--body-color) !important;
+  border: 1px solid rgba(0,255,163,0.15) !important;
+}
+.ui.selection.dropdown .menu {
+  background: var(--background-elev-1) !important;
+  border: 1px solid rgba(0,255,163,0.15) !important;
+}
+.ui.selection.dropdown .menu > .item { color: var(--body-color) !important; }
+.ui.selection.dropdown .menu > .item:hover {
+  background: rgba(0,255,163,0.08) !important;
+  color: var(--heading-color) !important;
+}
+
+/* Toggles e checkboxes */
+.ui.modal .ui.toggle.checkbox label, 
+.ui.modal .ui.checkbox label { color: var(--body-color) !important; }
 
 .mb-4 {
   margin-bottom: 1.5em !important;
@@ -391,13 +743,14 @@ a#menulogout, a:visited#menulogout {
 }
 
 .read-more-link {
-  color: var(--primary-color) !important;
+    color: var(--secondary-color) !important;
   text-decoration: none !important;
   font-weight: 500 !important;
 }
 
 .read-more-link:hover {
-  text-decoration: underline !important;
+    color: var(--success-green) !important;
+    text-decoration: underline !important;
 }
 
 .group-preview-photo {
@@ -466,7 +819,26 @@ a#menulogout, a:visited#menulogout {
 }
 
 .group-list-item:hover {
-    background-color: #f8f9fa;
+    background-color: var(--background-elev-2) !important;
+    border: 1px solid rgba(0,255,163,0.12) !important;
+    box-shadow: 0 8px 18px rgba(0, 168, 132, 0.15) !important;
+}
+
+/* Hover legível no modo dark para qualquer lista dividida */
+.ui.relaxed.divided.list > .item:hover,
+.ui.divided.list > .item:hover {
+    background-color: var(--background-elev-2) !important;
+    color: var(--body-color) !important;
+}
+.ui.relaxed.divided.list > .item:hover .header,
+.ui.divided.list > .item:hover .header {
+    color: var(--heading-color) !important;
+}
+.ui.relaxed.divided.list > .item:hover .meta,
+.ui.relaxed.divided.list > .item:hover .description,
+.ui.divided.list > .item:hover .meta,
+.ui.divided.list > .item:hover .description {
+    color: var(--body-color) !important;
 }
 
 .group-list-item .header {

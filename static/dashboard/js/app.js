@@ -52,9 +52,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // Initialize S3 media delivery dropdown
-  $('#s3MediaDelivery').dropdown();
-  $('#addInstanceS3MediaDelivery').dropdown();
+  // Initialize S3 media delivery dropdown (if present)
+  if ($('#s3MediaDelivery').length) { $('#s3MediaDelivery').dropdown(); }
+  if ($('#addInstanceS3MediaDelivery').length) { $('#addInstanceS3MediaDelivery').dropdown(); }
 
   // Initialize proxy enabled checkbox with onChange handler
   $('#proxyEnabledToggle').checkbox({
@@ -81,8 +81,8 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
-  // Initialize add instance S3 toggle
-  $('#addInstanceS3Toggle').checkbox({
+  // Initialize add instance S3 toggle (if present)
+  if ($('#addInstanceS3Toggle').length) { $('#addInstanceS3Toggle').checkbox({
     onChange: function() {
       const enabled = $('input[name="s3_enabled"]').is(':checked');
       if (enabled) {
@@ -98,10 +98,10 @@ document.addEventListener('DOMContentLoaded', function() {
         $('input[name="s3_public_url"]').val('');
         $('input[name="s3_retention_days"]').val('30');
         $('input[name="s3_path_style"]').prop('checked', false);
-        $('#addInstanceS3MediaDelivery').dropdown('set selected', 'base64');
+        if ($('#addInstanceS3MediaDelivery').length) { $('#addInstanceS3MediaDelivery').dropdown('set selected', 'base64'); }
       }
     }
-  });
+  }); }
 
   // Handle admin login button click
   adminLoginBtn.addEventListener('click', function() {
@@ -166,6 +166,15 @@ document.addEventListener('DOMContentLoaded', function() {
     window.location.reload();
     return false;
   });
+
+  // Atalho de logout no dropdown
+  const menuLogout = document.getElementById('menuLogout');
+  if (menuLogout) {
+    menuLogout.addEventListener('click', function(e){
+      e.preventDefault();
+      $('#menulogout').trigger('click');
+    });
+  }
 
   document.getElementById('pairphoneinput').addEventListener('keypress', function(e) {
     if (e.key === 'Enter') {
@@ -262,16 +271,175 @@ document.addEventListener('DOMContentLoaded', function() {
     getContacts();
   });
 
-  // S3 Configuration
-  document.getElementById('s3Config').addEventListener('click', function() {
-    $('#modalS3Config').modal({
-      onApprove: function() {
-        saveS3Config();
-        return false;
+  // Card: Configurações Gerais GHL (placeholder para futuras ações)
+  const ghlCard = document.getElementById('ghlGeneralSettings');
+  if (ghlCard) {
+    ghlCard.addEventListener('click', function(){
+      // Abre modal GHL estilizado
+      $('#modalGHLSettings')
+        .modal({
+          onVisible: function(){
+            // ativa abas
+            $('.menu .item').tab();
+            // hidrata estado inicial
+            // nada a hidratar por enquanto (somente outros toggles visuais)
+            refreshGHLStatus();
+          },
+          onApprove: function(){ return false; }
+        })
+        .modal('show');
+    });
+  }
+
+  // Salvar configurações GHL (sem ignore-groups no modal)
+  const ghlSave = document.getElementById('ghlSaveSettings');
+  if (ghlSave) {
+    ghlSave.addEventListener('click', async function(){
+      const token = getLocalStorageItem('token');
+      const sendOrigin = document.getElementById('ghl-toggle-send-origin')?.querySelector('input')?.checked || document.getElementById('ghl-toggle-send-origin')?.checked;
+      const userInConv = document.getElementById('ghl-toggle-agent-tag')?.querySelector('input')?.checked || document.getElementById('ghl-toggle-agent-tag')?.checked;
+      const phoneRaw = (document.getElementById('ghl-disconnect-phone')?.value || '').trim();
+      const phone = phoneRaw.replace(/[^0-9]/g, '').replace(/^\+/, '');
+      const alertOn = document.getElementById('ghl-toggle-disconnect-alert')?.querySelector('input')?.checked || document.getElementById('ghl-toggle-disconnect-alert')?.checked;
+      try {
+        await fetch('/integration/ghl/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': token },
+          body: JSON.stringify({ env_source: !!sendOrigin, user_in_conv: !!userInConv, disconnect_alert_phone: phone, disconnect_alert: !!alertOn })
+        });
+        $('#modalGHLSettings').modal('hide');
+        showSuccess('Configurações salvas');
+      } catch(_){
+        showError('Falha ao salvar configurações');
       }
-    }).modal('show');
-    loadS3Config();
+    });
+  }
+
+  // Botão Conectar GHL: chama nosso backend, que resolve Supabase e retorna redirect_url
+  document.addEventListener('click', async function(e){
+    if (e.target && e.target.id === 'btnConnectGHL') {
+      const btn = e.target;
+      const isDisconnect = btn.innerText.trim().toLowerCase().includes('desconectar');
+      const token = getLocalStorageItem('token');
+      try {
+        if (isDisconnect) {
+          const res = await fetch('/integration/ghl/disconnect', { method: 'POST', headers: { 'token': token } });
+          if (!res.ok) throw new Error('Falha ao desconectar do GHL');
+          showSuccess('GHL desconectado');
+          await refreshGHLStatus();
+          return;
+        }
+        const instanceId = getLocalStorageItem('currentInstance');
+        const res = await fetch('/integration/ghl/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': token },
+          body: JSON.stringify({ instanceId })
+        });
+        const json = await res.json();
+        if (!res.ok || !json.redirect_url) throw new Error(json.error || 'Falha ao gerar URL de autorização do GHL');
+        window.open(json.redirect_url, '_blank');
+        setTimeout(refreshGHLStatus, 1500);
+      } catch(err) {
+        showError(err.message || 'Erro ao processar GHL');
+      }
+    }
   });
+
+  async function refreshGHLStatus(){
+    const token = getLocalStorageItem('token');
+    try {
+      const res = await fetch('/integration/ghl/status', { headers: { 'token': token } });
+      const json = await res.json();
+      const btn = document.getElementById('btnConnectGHL');
+      const label = document.getElementById('ghlConnInfo');
+      if (json.connected) {
+        if (btn) btn.innerText = 'Desconectar GHL';
+        if (label) label.textContent = `Conectado: ${json.ghl_location_id}`;
+      } else {
+        if (btn) btn.innerText = 'Conectar GHL';
+        if (label) label.textContent = '';
+      }
+      // Hidrata toggle de envio de origem
+      try {
+        const v = !!json.env_source;
+        const el = document.getElementById('ghl-toggle-send-origin');
+        if (el) {
+          const input = el.querySelector ? el.querySelector('input') : null;
+          if (input) input.checked = v; else if (typeof el.checked !== 'undefined') el.checked = v;
+        }
+      } catch(_){ }
+      try {
+        const tel = json.disconnect_alert_phone || '';
+        const input = document.getElementById('ghl-disconnect-phone');
+        if (input) input.value = tel || '';
+        const toggle = document.getElementById('ghl-toggle-disconnect-alert');
+        if (toggle) {
+          const isOn = !!tel && tel.length > 3;
+          const inputInner = toggle.querySelector ? toggle.querySelector('input') : null;
+          if (inputInner) inputInner.checked = isOn; else if (typeof toggle.checked !== 'undefined') toggle.checked = isOn;
+        }
+      } catch(_){ }
+      try {
+        const v2 = !!json.user_in_conv;
+        const el2 = document.getElementById('ghl-toggle-agent-tag');
+        if (el2) {
+          const input2 = el2.querySelector ? el2.querySelector('input') : null;
+          if (input2) input2.checked = v2; else if (typeof el2.checked !== 'undefined') el2.checked = v2;
+        }
+      } catch(_){ }
+    } catch(_){}
+  }
+
+  // Edit logo button
+  const editLogoBtn = document.getElementById('editLogoBtn');
+  const menuEditLogo = document.getElementById('menuEditLogo');
+  function openLogoModal(){
+      $('#modalEditLogo').modal({
+        onApprove: function() { return false; }
+      }).modal('show');
+      // preload from status cache if available
+      const current = getLocalStorageItem('currentInstance');
+      try {
+        const cached = localStorage.getItem('logo:'+current);
+        if (cached) { const input = document.getElementById('logoUrlInput'); if (input) input.value = JSON.parse(cached).url; }
+      } catch(_){}
+      // no direct cache; will fetch from status on update
+  }
+  if (editLogoBtn) editLogoBtn.addEventListener('click', openLogoModal);
+  if (menuEditLogo) menuEditLogo.addEventListener('click', openLogoModal);
+
+  // Dropdown do header
+  if ($('#headerActions').dropdown) {
+    try { $('#headerActions').dropdown({ action: 'hide' }); } catch (_) {}
+  }
+  const saveLogoBtn = document.getElementById('saveLogoBtn');
+  if (saveLogoBtn) {
+    saveLogoBtn.addEventListener('click', async function() {
+      const token = getLocalStorageItem('token');
+      const url = (document.getElementById('logoUrlInput').value || '').trim();
+      try {
+        const res = await fetch(baseUrl + '/session/branding', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': token },
+          body: JSON.stringify({ logo_url: url })
+        });
+        if (!res.ok) throw new Error('failed');
+        // refetch status e aplica imediatamente
+        try { await status(); } catch (_) {}
+        const logo = document.getElementById('instanceLogo');
+        if (logo) { logo.src = url || 'https://storage.googleapis.com/msgsndr/2cDhyWVcBPF6fKMDd4fi/media/689c31d3df61c23b596f0131.png'; }
+        $('#modalEditLogo').modal('hide');
+        showSuccess('Logo atualizada');
+      } catch (_) {
+        showError('Não foi possível salvar a logo');
+      }
+    });
+  }
+
+  // S3 Configuration removed (guard in case element remains)
+  if (document.getElementById('s3Config')) {
+    document.getElementById('s3Config').addEventListener('click', function() { return; });
+  }
 
   // Proxy Configuration
   document.getElementById('proxyConfig').addEventListener('click', function() {
@@ -289,15 +457,7 @@ document.addEventListener('DOMContentLoaded', function() {
     webhookModal();
   });
 
-  // S3 Test Connection
-  document.getElementById('testS3Connection').addEventListener('click', function() {
-    testS3Connection();
-  });
-
-  // S3 Delete Configuration
-  document.getElementById('deleteS3Config').addEventListener('click', function() {
-    deleteS3Config();
-  });
+  // S3 handlers removed
 
   // Proxy checkbox toggle is now initialized in DOMContentLoaded
 
@@ -341,49 +501,21 @@ document.addEventListener('DOMContentLoaded', function() {
           prompt: 'Proxy URL must start with http://, https://, or socks5://'
         }]
       },
-      s3_endpoint: {
-        identifier: 's3_endpoint',
-        optional: true,
-        rules: [{
-          type: 'url',
-          prompt: 'Please enter a valid S3 endpoint URL'
-        }]
-      },
-      s3_bucket: {
-        identifier: 's3_bucket',
-        optional: true,
-        rules: [{
-          type: 'regExp[^[a-z0-9][a-z0-9.-]*[a-z0-9]$]',
-          prompt: 'Please enter a valid S3 bucket name'
-        }]
-      }
+       
     },
     onSuccess: function(event, fields) {
       event.preventDefault();
       
       // Validate conditional fields
       const proxyEnabled = fields.proxy_enabled === 'on' || fields.proxy_enabled === true;
-      const s3Enabled = fields.s3_enabled === 'on' || fields.s3_enabled === true;
+      const s3Enabled = false;
       
       if (proxyEnabled && !fields.proxy_url) {
         showError('Proxy URL is required when proxy is enabled');
         return false;
       }
       
-      if (s3Enabled) {
-        if (!fields.s3_bucket) {
-          showError('S3 bucket name is required when S3 is enabled');
-          return false;
-        }
-        if (!fields.s3_access_key) {
-          showError('S3 access key is required when S3 is enabled');
-          return false;
-        }
-        if (!fields.s3_secret_key) {
-          showError('S3 secret key is required when S3 is enabled');
-          return false;
-        }
-      }
+      // S3 validations removed
       
       addInstance(fields).then((result) => {
         if (result.success) {
@@ -402,9 +534,9 @@ document.addEventListener('DOMContentLoaded', function() {
       $('.ui.dropdown').dropdown('restore defaults');
       // Reset toggles
       $('#addInstanceProxyToggle').checkbox('set unchecked');
-      $('#addInstanceS3Toggle').checkbox('set unchecked');
+      if ($('#addInstanceS3Toggle').length) { $('#addInstanceS3Toggle').checkbox('set unchecked'); }
       $('#addInstanceProxyUrlField').hide();
-      $('#addInstanceS3Fields').hide();
+      if ($('#addInstanceS3Fields').length) { $('#addInstanceS3Fields').hide(); }
     }
   });
 
@@ -425,21 +557,8 @@ async function addInstance(data) {
     proxyURL: proxyEnabled ? (data.proxy_url || '') : ''
   };
   
-  // Build S3 configuration
-  const s3Enabled = data.s3_enabled === 'on' || data.s3_enabled === true;
-  const s3PathStyle = data.s3_path_style === 'on' || data.s3_path_style === true;
-  const s3Config = {
-    enabled: s3Enabled,
-    endpoint: s3Enabled ? (data.s3_endpoint || '') : '',
-    region: s3Enabled ? (data.s3_region || '') : '',
-    bucket: s3Enabled ? (data.s3_bucket || '') : '',
-    accessKey: s3Enabled ? (data.s3_access_key || '') : '',
-    secretKey: s3Enabled ? (data.s3_secret_key || '') : '',
-    pathStyle: s3PathStyle,
-    publicURL: s3Enabled ? (data.s3_public_url || '') : '',
-    mediaDelivery: s3Enabled ? (data.s3_media_delivery || 'base64') : 'base64',
-    retentionDays: s3Enabled ? (parseInt(data.s3_retention_days) || 30) : 30
-  };
+  // S3 removed from UI: always disabled
+  const s3Config = { enabled: false };
   
   const payload = {
     name: data.name,
@@ -506,7 +625,8 @@ function handleRegularLogin(token,notifications=false) {
   setLocalStorageItem('token', token, 6);
   removeLocalStorageItem('isAdmin');
   $('.adminlogin').hide();
-  statusRequest().then((status) => {
+  return statusRequest()
+  .then((status) => {
     if(status.success==true) {
       console.log(status.data);
       setLocalStorageItem('currentInstance', status.data.id, 6);
@@ -529,6 +649,16 @@ function handleRegularLogin(token,notifications=false) {
       showError("Invalid credentials");
       $('#loginToken').focus();
     }
+  })
+  .catch((err) => {
+    console.error('Auto login failed:', err);
+    removeLocalStorageItem('token');
+    // Fallback seguro: volta para tela de login
+    hideWidgets();
+    $('.maingrid').addClass('hidden');
+    $('.admingrid').addClass('hidden');
+    $('.logingrid').removeClass('hidden');
+    showError('Falha ao autenticar automaticamente. Tente novamente.');
   });
 }
   
@@ -541,6 +671,18 @@ function updateUser() {
         setLocalStorageItem('currentUserJID', result.data.jid, 6);
         window.currentUserJID = result.data.jid;
       }
+      // Update header logo if available
+      try {
+          const logo = (result.data.logo_url || '').trim();
+        const el = document.getElementById('instanceLogo');
+        if (el) {
+          const finalUrl = logo || 'https://storage.googleapis.com/msgsndr/2cDhyWVcBPF6fKMDd4fi/media/689c31d3df61c23b596f0131.png';
+          if (el.src !== finalUrl) el.src = finalUrl;
+        }
+        const input = document.getElementById('logoUrlInput');
+        if (input) input.value = logo;
+        try { localStorage.setItem('logo:'+getLocalStorageItem('currentInstance'), JSON.stringify({url: logo})); } catch(_){}
+      } catch (_) {}
       populateInstances([result.data]);
     } 
   });
@@ -562,6 +704,18 @@ function updateAdmin() {
     // get only active instance status
     status().then((result)=> {
       if(result.success==true) {
+        // Atualiza a logo do header de acordo com a instância atual
+        try {
+          const logo = (result.data.logo_url || '').trim();
+          const el = document.getElementById('instanceLogo');
+          if (el) {
+            const finalUrl = logo || 'https://storage.googleapis.com/msgsndr/2cDhyWVcBPF6fKMDd4fi/media/689c31d3df61c23b596f0131.png';
+            if (el.src !== finalUrl) el.src = finalUrl;
+          }
+          const input = document.getElementById('logoUrlInput');
+          if (input) input.value = logo;
+          try { localStorage.setItem('logo:'+getLocalStorageItem('currentInstance'), JSON.stringify({url: logo})); } catch(_){}
+        } catch (_) {}
         populateInstances([result.data]);
       } 
     });
@@ -577,7 +731,8 @@ function handleAdminLogin(token,notifications=false) {
   $('.adminlogin').show();
   const currentInstance = getLocalStorageItem("currentInstance");
 
-  getUsers().then((result) => {
+  return getUsers()
+  .then((result) => {
     if(result.success==true) {
 
       showAdminUser();
@@ -602,6 +757,17 @@ function handleAdminLogin(token,notifications=false) {
       showError("Admin login failed");
       $('#loginToken').focus();
     }
+  })
+  .catch((err) => {
+    console.error('Admin auto login failed:', err);
+    removeLocalStorageItem('admintoken');
+    removeLocalStorageItem('token');
+    removeLocalStorageItem('isAdmin');
+    hideWidgets();
+    $('.maingrid').addClass('hidden');
+    $('.admingrid').addClass('hidden');
+    $('.logingrid').removeClass('hidden');
+    showError('Falha ao autenticar como admin automaticamente. Informe o token.');
   });
 }
     
@@ -673,6 +839,20 @@ function openDashboard(id,token) {
   $('.card.no-hover').addClass('hidden');
   $(`#instance-card-${id}`).removeClass('hidden');
   $('.adminlogin').show();
+  // Assim que abrir, força atualização da logo para esta instância
+  status().then((result)=>{
+    if (result && result.success && result.data) {
+      try {
+        const logo = (result.data.logo_url || '').trim();
+        const el = document.getElementById('instanceLogo');
+        if (el) {
+          el.src = logo || 'https://storage.googleapis.com/msgsndr/2cDhyWVcBPF6fKMDd4fi/media/689c31d3df61c23b596f0131.png';
+        }
+        const input = document.getElementById('logoUrlInput');
+        if (input) input.value = logo;
+      } catch (_) {}
+    }
+  });
 }
 
 function goBackToList() {
@@ -1059,6 +1239,33 @@ function init() {
   // Starting
   let notoken=0;
   let scanInterval;
+  // Deep-link via URL or hash: ?token=...&instance=... [&admin=1]
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const hash = window.location.hash ? window.location.hash.substring(1) : '';
+    const hashParams = new URLSearchParams(hash);
+    const tokenFromUrl = urlParams.get('token') || urlParams.get('t') || hashParams.get('token') || hashParams.get('t');
+    const instanceFromUrl = urlParams.get('instance') || urlParams.get('id') || hashParams.get('instance') || hashParams.get('id');
+    const adminFlag = (urlParams.get('admin') || hashParams.get('admin') || '').toLowerCase();
+
+    if (tokenFromUrl) {
+      if (instanceFromUrl) {
+        setLocalStorageItem('currentInstance', instanceFromUrl, 6);
+      }
+      // Prefer hash usage to avoid server logs; in any case, clean URL afterwards
+      history.replaceState({}, document.title, window.location.pathname);
+      const loginPromise = (adminFlag === '1' || adminFlag === 'true' || adminFlag === 'yes')
+        ? handleAdminLogin(tokenFromUrl)
+        : handleRegularLogin(tokenFromUrl);
+      // Show loading state while trying auto-login
+      try { $('#loading').addClass('active'); } catch (_) {}
+      Promise.resolve(loginPromise).finally(()=>{
+        try { $('#loading').removeClass('active'); } catch (_) {}
+      });
+      return;
+    }
+  } catch (_) { /* noop */ }
+
   let token = getLocalStorageItem('token');
   let admintoken = getLocalStorageItem('admintoken');
   let isAdminLogin = getLocalStorageItem('isAdmin');
@@ -1113,9 +1320,14 @@ function populateInstances(instances) {
               <div class="ui ${instance.loggedIn ? 'one' : 'two'} column stackable grid">
                   <!-- Left Column - Instance Info -->
                   <div class="column">
-                      <div class="header" style="font-size: 1.3em; margin-bottom: 0.5rem;">
-                          ${instance.name}
-                          <div class="ui labels" style="margin-top: 0.5em;">
+                      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+                        ${instance.profile_pic_url ? `<img src="${instance.profile_pic_url}" alt="avatar" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.1);"/>` : `<div class="chat-avatar" style="width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#2b2f31;color:#9aa0a6;border:1px solid rgba(255,255,255,0.08);">${(instance.name||'S').slice(0,1).toUpperCase()}</div>`}
+                        <div>
+                          <div class="header" style="font-size: 1.3em; margin-bottom: 0.25rem;">${instance.name}</div>
+                          ${instance.profile_name ? `<div class="meta" style="opacity:.8;">${instance.profile_name}</div>` : ''}
+                        </div>
+                      </div>
+                          <div class="ui labels" style="margin-top: 0.25em;">
                               <div class="ui ${instance.connected ? 'green' : 'red'} horizontal label">
                                   <i class="${instance.connected ? 'check' : 'times'} icon"></i>
                                   ${instance.connected ? 'Connected' : 'Disconnected'}
@@ -1125,43 +1337,21 @@ function populateInstances(instances) {
                                   ${instance.loggedIn ? 'Logged In' : 'Logged Out'}
                               </div>
                           </div>
-                      </div>
                       
-                      <div class="meta" style="margin-bottom: 1rem;">Instance ID: ${instance.id}</div>
-                      
-                      <div class="ui list">
-                          <div class="item">
-                              <div class="header">Token</div>
-                              <div class="content" style="word-break: break-all;">${instance.token}</div>
-                          </div>
-                          <div class="item">
-                              <div class="header">JID</div>
-                              <div class="content">${instance.jid || 'Not available'}</div>
-                          </div>
-                          <div class="item">
-                              <div class="header">Webhook</div>
-                              <div class="content" style="word-break: break-all;">${instance.webhook || 'Not configured'}</div>
-                          </div>
-                          <div class="item">
-                              <div class="header">Subscribed Events</div>
-                              <div class="content">${instance.events || 'Not configured'}</div>
-                          </div>
-                          <div class="item">
-                              <div class="header">Proxy</div>
-                              <div class="content">${instance.proxy_config.enabled ? 'Enabled' : 'Disabled'}</div>
-                          </div>
-                          <div class="item">
-                              <div class="header">Proxy URL</div>
-                              <div class="content">${instance.proxy_config.proxy_url || 'Not configured'}</div>
-                          </div>
-                          <div class="item">
-                              <div class="header">S3</div>
-                              <div class="content">${instance.s3_config.enabled ? 'Enabled' : 'Disabled'}</div>
-                          </div>
-                          <div class="item">
-                              <div class="header">S3 Endpoint</div>
-                              <div class="content">${instance.s3_config.endpoint || 'Not configured'}</div>
-                          </div>
+                      <div class="meta" style="margin-bottom: .5rem; opacity:.8;">Instance ID: ${instance.id}</div>
+                      <div style="display:grid;grid-template-columns:160px 1fr;gap:6px 12px;align-items:center;">
+                        <div style="opacity:.7;">Token</div>
+                        <div style="word-break:break-all;">${instance.token}</div>
+                        <div style="opacity:.7;">JID</div>
+                        <div>${instance.jid || 'Not available'}</div>
+                        <div style="opacity:.7;">Webhook</div>
+                        <div style="word-break:break-all;">${instance.webhook || 'Not configured'}</div>
+                        <div style="opacity:.7;">Subscribed Events</div>
+                        <div>${instance.events || 'Not configured'}</div>
+                        <div style="opacity:.7;">Proxy</div>
+                        <div>${instance.proxy_config.enabled ? 'Enabled' : 'Disabled'}</div>
+                        <div style="opacity:.7;">Proxy URL</div>
+                        <div>${instance.proxy_config.proxy_url || 'Not configured'}</div>
                       </div>
                   </div>
                   
@@ -1191,11 +1381,35 @@ function populateInstances(instances) {
             <div class="extra content">
               <button class="ui primary positive button dashboard-button ${instance.connected === true ? 'hidden' : ''}" id="button-connect-${instance.id}" onclick="connect('${instance.token}')">Connect</button>
               <button class="ui primary negative button dashboard-button ${instance.connected === true ? '' : 'hidden'}" id="button-logout-${instance.id}" onclick="logout('${instance.token}')">Logout</button>
+              <div class="ui toggle checkbox" style="margin-left:10px;">
+                <input type="checkbox" id="toggle-ignore-groups-${instance.id}" ${instance.ignore_groups ? 'checked' : ''}>
+                <label>Ignore group messages</label>
+              </div>
               <button class="ui primary positive button dashboard-button ${instance.connected === true && instance.loggedIn === false ? '' : 'hidden'} id="button-logout-${instance.id}" onclick="modalPairPhone()">Login with Pairing Code</button>
               </div>
         </div>
         `;
     cardsContainer.append(card);
+    // bind toggle event
+    setTimeout(() => {
+      const el = document.getElementById(`toggle-ignore-groups-${instance.id}`);
+      if (el) {
+        el.addEventListener('change', async (e) => {
+          try {
+            const res = await fetch(baseUrl + '/settings/ignore-groups', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'token': instance.token },
+              body: JSON.stringify({ ignore: e.target.checked })
+            });
+            if (!res.ok) throw new Error('Failed to update');
+          } catch (err) {
+            console.error(err);
+            e.target.checked = !e.target.checked;
+            alert('Failed to update ignore groups');
+          }
+        });
+      }
+    }, 0);
   });
   if(currentInstance!==null) {
      const showInstanceId=`instance-card-${currentInstance}`

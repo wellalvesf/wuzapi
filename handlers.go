@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -641,8 +642,18 @@ func (s *server) GetStatus() http.HandlerFunc {
 			}
 		*/
 
-		isConnected := clientManager.GetWhatsmeowClient(txtid).IsConnected()
-		isLoggedIn := clientManager.GetWhatsmeowClient(txtid).IsLoggedIn()
+		// Safely check client state (client may be nil when not connected yet)
+		var isConnected bool
+		var isLoggedIn bool
+		var client *whatsmeow.Client
+		client = clientManager.GetWhatsmeowClient(txtid)
+		if client != nil {
+			isConnected = client.IsConnected()
+			isLoggedIn = client.IsLoggedIn()
+		} else {
+			isConnected = false
+			isLoggedIn = false
+		}
 
 		// Get proxy_config
 		var proxyURL string
@@ -668,19 +679,78 @@ func (s *server) GetStatus() http.HandlerFunc {
 			"media_delivery": s3MediaDelivery,
 			"retention_days": s3RetentionDays,
 		}
+		// read ignore_groups flag and logo_url
+		var ignoreGroups bool
+		_ = s.db.Get(&ignoreGroups, "SELECT COALESCE(ignore_groups,false) FROM users WHERE id=$1", txtid)
+		logoURL := ""
+		_ = s.db.Get(&logoURL, "SELECT COALESCE(logo_url,'') FROM users WHERE id=$1", txtid)
+
+		// profile details (from current client store and avatar API)
+		profileName := ""
+		if client != nil {
+			profileName = client.Store.PushName
+		}
+		avatarURL := ""
+		myjid := userInfo.Get("Jid")
+		// Normalize JID to base user (remove device suffix like :65)
+		baseJIDStr := myjid
+		if myjid != "" {
+			if atIdx := strings.Index(myjid, "@"); atIdx > 0 {
+				user := myjid[:atIdx]
+				if cIdx := strings.Index(user, ":"); cIdx > 0 {
+					user = user[:cIdx]
+				}
+				baseJIDStr = user + "@s.whatsapp.net"
+			}
+		}
+		// Only attempt avatar lookup if we have a client and a valid base JID
+		if client != nil && len(baseJIDStr) > 0 {
+			if jid, ok := parseJID(baseJIDStr); ok {
+				// bounded lookup with timeout
+				type result struct{ url string }
+				ch := make(chan result, 1)
+				go func() {
+					if pic, err := client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{Preview: true}); err == nil && pic != nil && pic.URL != "" {
+						ch <- result{url: pic.URL}
+						return
+					}
+					if pic, err := client.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{Preview: false}); err == nil && pic != nil && pic.URL != "" {
+						ch <- result{url: pic.URL}
+						return
+					}
+					ch <- result{url: ""}
+				}()
+				select {
+				case res := <-ch:
+					avatarURL = res.url
+				case <-time.After(5 * time.Second):
+					avatarURL = ""
+				}
+			}
+		}
+		number := baseJIDStr
+		if idx := strings.Index(baseJIDStr, "@"); idx > 0 {
+			number = baseJIDStr[:idx]
+		}
+
 		response := map[string]interface{}{
-			"id":           txtid,
-			"name":         userInfo.Get("Name"),
-			"connected":    isConnected,
-			"loggedIn":     isLoggedIn,
-			"token":        userInfo.Get("Token"),
-			"jid":          userInfo.Get("Jid"),
-			"webhook":      userInfo.Get("Webhook"),
-			"events":       userInfo.Get("Events"),
-			"proxy_url":    userInfo.Get("Proxy"),
-			"qrcode":       userInfo.Get("Qrcode"),
-			"proxy_config": proxyConfig,
-			"s3_config":    s3Config,
+			"id":              txtid,
+			"name":            userInfo.Get("Name"),
+			"connected":       isConnected,
+			"loggedIn":        isLoggedIn,
+			"token":           userInfo.Get("Token"),
+			"jid":             userInfo.Get("Jid"),
+			"webhook":         userInfo.Get("Webhook"),
+			"events":          userInfo.Get("Events"),
+			"proxy_url":       userInfo.Get("Proxy"),
+			"qrcode":          userInfo.Get("Qrcode"),
+			"proxy_config":    proxyConfig,
+			"s3_config":       s3Config,
+			"ignore_groups":   ignoreGroups,
+			"logo_url":        logoURL,
+			"profile_name":    profileName,
+			"profile_pic_url": avatarURL,
+			"number":          number,
 		}
 		responseJson, err := json.Marshal(response)
 		if err != nil {
@@ -689,6 +759,593 @@ func (s *server) GetStatus() http.HandlerFunc {
 			s.Respond(w, r, http.StatusOK, string(responseJson))
 		}
 		return
+	}
+}
+
+// Returns the egress IP used by this instance (no proxy secrets exposed)
+func (s *server) GetEgressIP() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+		// usa o mesmo http client da instância (com proxy aplicado)
+		hc := clientManager.GetHTTPClient(txtid)
+		if hc == nil {
+			s.Respond(w, r, http.StatusBadRequest, map[string]string{"error": "no http client for instance"})
+			return
+		}
+		ip := ""
+		if resp, err := hc.R().Get("https://httpbin.org/ip"); err == nil && resp.StatusCode() == 200 {
+			var ipr map[string]interface{}
+			_ = json.Unmarshal(resp.Body(), &ipr)
+			if v, ok := ipr["origin"].(string); ok {
+				ip = v
+			}
+		}
+		// indica a origem de configuração do proxy sem mostrar URL
+		via := "none"
+		if os.Getenv("DEFAULT_PROXY_URL") != "" {
+			via = "default_proxy"
+		} else {
+			// checa se há proxy por instância (sem devolver a URL)
+			var p string
+			_ = s.db.Get(&p, "SELECT COALESCE(proxy_url,'') FROM users WHERE id=$1", txtid)
+			if p != "" {
+				via = "instance_proxy"
+			}
+		}
+		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{"ip": ip, "via": via})
+	}
+}
+
+// Returns current instance profile information (push name and avatar URL)
+func (s *server) GetMyProfile() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+		myjid := r.Context().Value("userinfo").(Values).Get("Jid")
+
+		cli := clientManager.GetWhatsmeowClient(txtid)
+		if cli == nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("no session"))
+			return
+		}
+
+		profileName := cli.Store.PushName
+
+		// Try to fetch avatar url (normalize JID removing device suffix like :65)
+		avatarURL := ""
+		baseJIDStr := myjid
+		if atIdx := strings.Index(myjid, "@"); atIdx > 0 {
+			user := myjid[:atIdx]
+			if cIdx := strings.Index(user, ":"); cIdx > 0 {
+				user = user[:cIdx]
+			}
+			baseJIDStr = user + "@s.whatsapp.net"
+		}
+		if len(baseJIDStr) > 0 {
+			if jid, ok := parseJID(baseJIDStr); ok {
+				// bounded lookup with timeout
+				type result struct{ url string }
+				ch := make(chan result, 1)
+				go func() {
+					if pic, err := cli.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{Preview: true}); err == nil && pic != nil && pic.URL != "" {
+						ch <- result{url: pic.URL}
+						return
+					}
+					if pic, err := cli.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{Preview: false}); err == nil && pic != nil && pic.URL != "" {
+						ch <- result{url: pic.URL}
+						return
+					}
+					ch <- result{url: ""}
+				}()
+				select {
+				case res := <-ch:
+					avatarURL = res.url
+				case <-time.After(5 * time.Second):
+					avatarURL = ""
+				}
+			}
+		}
+
+		// Extract MSISDN from JID (number before @)
+		number := baseJIDStr
+		if idx := strings.Index(baseJIDStr, "@"); idx > 0 {
+			number = baseJIDStr[:idx]
+		}
+
+		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{
+			"jid":           myjid,
+			"number":        number,
+			"profileName":   profileName,
+			"profilePicUrl": avatarURL,
+		})
+	}
+}
+
+// SetBranding sets per-instance branding like logo_url
+func (s *server) SetBranding() http.HandlerFunc {
+	type payload struct {
+		LogoURL string `json:"logo_url"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+		var p payload
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid payload"))
+			return
+		}
+		// sanitize: optional, limit size
+		if len(p.LogoURL) > 1024 {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("logo_url too long"))
+			return
+		}
+		// save (empty clears)
+		_, err := s.db.Exec("UPDATE users SET logo_url=$1 WHERE id=$2", p.LogoURL, txtid)
+		if err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("failed to save branding"))
+			return
+		}
+		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{"Details": "Branding updated", "logo_url": p.LogoURL})
+	}
+}
+
+// GHLConnect resolves instance metadata from our DB and calls Supabase Edge function to get OAuth URL
+func (s *server) GHLConnect() http.HandlerFunc {
+	type request struct {
+		InstanceID string `json:"instanceId"`
+	}
+	type edgeResponse struct {
+		RedirectURL string `json:"redirect_url"`
+		Error       string `json:"error"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+
+		var req request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid payload"))
+			return
+		}
+		if req.InstanceID == "" {
+			req.InstanceID = txtid
+		}
+
+		// Busca instance_name e apikey desta instância
+		var instanceName, apiKey string
+		err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", req.InstanceID).Scan(&instanceName, &apiKey)
+		if err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+		log.Info().Str("instanceId", req.InstanceID).Str("instanceName", instanceName).Msg("Preparing GHL connect")
+
+		// Lê configs de Supabase do ambiente
+		functionsURL := os.Getenv("SUPABASE_FUNCTIONS_URL")
+		supaURL := os.Getenv("SUPABASE_URL")
+		supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
+		if supaKey == "" { // fallback, se não houver service role configurado
+			supaKey = os.Getenv("SUPABASE_ANON_KEY")
+		}
+		if functionsURL == "" || supaURL == "" || supaKey == "" {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("supabase not configured"))
+			return
+		}
+
+		// Valida no Supabase: buscar linha em instances por instance_name e apikey (fonte da verdade)
+		restURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?select=id,user_id&instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+		httpClient := &http.Client{Timeout: 15 * time.Second}
+		reqRest, _ := http.NewRequest("GET", restURL, nil)
+		reqRest.Header.Set("apikey", supaKey)
+		reqRest.Header.Set("Authorization", "Bearer "+supaKey)
+		reqRest.Header.Set("Accept", "application/json")
+		log.Info().Str("restURL", restURL).Msg("Querying Supabase instances")
+
+		type supaRow struct {
+			ID     string `json:"id"`
+			UserID string `json:"user_id"`
+		}
+		var rows []supaRow
+		if resp, err := httpClient.Do(reqRest); err == nil {
+			defer resp.Body.Close()
+			_ = json.NewDecoder(resp.Body).Decode(&rows)
+		} else {
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("supabase rest error: %w", err))
+			return
+		}
+		if len(rows) == 0 || rows[0].UserID == "" || rows[0].ID == "" {
+			log.Warn().Str("instanceId", req.InstanceID).Str("instanceName", instanceName).Msg("Instance not found in Supabase")
+			s.Respond(w, r, http.StatusNotFound, errors.New("instance not found in supabase"))
+			return
+		}
+		supaInstanceID := rows[0].ID
+		supaUserID := rows[0].UserID
+		log.Info().Str("supabaseInstanceID", supaInstanceID).Str("supabaseUserID", supaUserID).Msg("Supabase validation ok")
+
+		payload := map[string]string{
+			"instanceId": supaInstanceID,
+			"userId":     supaUserID,
+		}
+		bodyBytes, _ := json.Marshal(payload)
+
+		// Faz POST na função Edge /ghl-connect
+		edgeURL := strings.TrimRight(functionsURL, "/") + "/ghl-connect"
+		httpReq, _ := http.NewRequest("POST", edgeURL, bytes.NewReader(bodyBytes))
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", "Bearer "+supaKey)
+		httpReq.Header.Set("apikey", supaKey)
+		// Passa metadados básicos em headers para a função (se desejar)
+		// instance_name e apikey codificados para evitar log
+		httpReq.Header.Set("x-instance-name", base64.StdEncoding.EncodeToString([]byte(instanceName)))
+		httpReq.Header.Set("x-instance-token", base64.StdEncoding.EncodeToString([]byte(apiKey)))
+
+		resp, err := httpClient.Do(httpReq)
+		if err != nil {
+			log.Error().Err(err).Msg("Edge call failed")
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("edge call failed: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+		var ed edgeResponse
+		_ = json.NewDecoder(resp.Body).Decode(&ed)
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 || ed.RedirectURL == "" {
+			log.Error().Int("status", resp.StatusCode).Str("edgeError", ed.Error).Msg("Edge returned error")
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("edge error: %s", ed.Error))
+			return
+		}
+		log.Info().Str("redirect", ed.RedirectURL).Msg("Edge returned redirect URL")
+		s.respondWithJSON(w, http.StatusOK, map[string]string{"redirect_url": ed.RedirectURL})
+	}
+}
+
+// GHLStatus checks Supabase for current instance GHL connection and returns ghl_location_id
+func (s *server) GHLStatus() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+
+		var instanceName, apiKey string
+		if err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", txtid).Scan(&instanceName, &apiKey); err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+
+		supaURL := os.Getenv("SUPABASE_URL")
+		supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
+		if supaKey == "" {
+			supaKey = os.Getenv("SUPABASE_ANON_KEY")
+		}
+		if supaURL == "" || supaKey == "" {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("supabase not configured"))
+			return
+		}
+
+		restURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?select=id,user_id,ghl_location_id,env_source,user_in_conv,disconnect_alert_phone&instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+		httpClient := &http.Client{Timeout: 10 * time.Second}
+		reqRest, _ := http.NewRequest("GET", restURL, nil)
+		reqRest.Header.Set("apikey", supaKey)
+		reqRest.Header.Set("Authorization", "Bearer "+supaKey)
+		reqRest.Header.Set("Accept", "application/json")
+
+		type row struct {
+			ID              string  `json:"id"`
+			UserID          string  `json:"user_id"`
+			Location        string  `json:"ghl_location_id"`
+			EnvSource       *bool   `json:"env_source"`
+			UserInConv      *bool   `json:"user_in_conv"`
+			DisconnectPhone *string `json:"disconnect_alert_phone"`
+		}
+		var rows []row
+		resp, err := httpClient.Do(reqRest)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("supabase rest error: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+		_ = json.NewDecoder(resp.Body).Decode(&rows)
+		if len(rows) == 0 {
+			s.respondWithJSON(w, http.StatusOK, map[string]any{"connected": false})
+			return
+		}
+
+		s.respondWithJSON(w, http.StatusOK, map[string]any{
+			"connected":              rows[0].Location != "",
+			"ghl_location_id":        rows[0].Location,
+			"env_source":             rows[0].EnvSource,
+			"user_in_conv":           rows[0].UserInConv,
+			"disconnect_alert_phone": rows[0].DisconnectPhone,
+		})
+	}
+}
+
+// GHLDisconnect clears GHL fields in Supabase for this instance (instance_name+apikey)
+func (s *server) GHLDisconnect() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+
+		var instanceName, apiKey string
+		if err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", txtid).Scan(&instanceName, &apiKey); err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+
+		supaURL := os.Getenv("SUPABASE_URL")
+		supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
+		if supaKey == "" {
+			supaKey = os.Getenv("SUPABASE_ANON_KEY")
+		}
+		if supaURL == "" || supaKey == "" {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("supabase not configured"))
+			return
+		}
+
+		// Upsert/patch na tabela instances: setar campos GHL como null
+		patchURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+		body := map[string]any{
+			"ghl_location_id":      nil,
+			"ghl_access_token":     nil,
+			"ghl_refresh_token":    nil,
+			"ghl_token_expires_at": nil,
+			"ghl_company_id":       nil,
+		}
+		bodyBytes, _ := json.Marshal(body)
+		httpClient := &http.Client{Timeout: 10 * time.Second}
+		reqPatch, _ := http.NewRequest("PATCH", patchURL, bytes.NewReader(bodyBytes))
+		reqPatch.Header.Set("apikey", supaKey)
+		reqPatch.Header.Set("Authorization", "Bearer "+supaKey)
+		reqPatch.Header.Set("Content-Type", "application/json")
+		reqPatch.Header.Set("Prefer", "return=representation")
+		resp, err := httpClient.Do(reqPatch)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("supabase rest error: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode/100 != 2 {
+			s.Respond(w, r, http.StatusBadGateway, errors.New("failed to clear GHL data in supabase"))
+			return
+		}
+
+		s.respondWithJSON(w, http.StatusOK, map[string]any{"success": true})
+	}
+}
+
+// GHLUpdateSettings atualiza flags na tabela instances (Supabase) para a instância atual
+func (s *server) GHLUpdateSettings() http.HandlerFunc {
+	type reqBody struct {
+		EnvSource            *bool   `json:"env_source"`
+		UserInConv           *bool   `json:"user_in_conv"`
+		DisconnectAlertPhone *string `json:"disconnect_alert_phone"`
+		DisconnectAlert      *bool   `json:"disconnect_alert"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+
+		var instanceName, apiKey string
+		if err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", txtid).Scan(&instanceName, &apiKey); err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+
+		var body reqBody
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid payload"))
+			return
+		}
+
+		supaURL := os.Getenv("SUPABASE_URL")
+		supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
+		if supaKey == "" {
+			supaKey = os.Getenv("SUPABASE_ANON_KEY")
+		}
+		if supaURL == "" || supaKey == "" {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("supabase not configured"))
+			return
+		}
+
+		patchURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+		payload := map[string]any{}
+		if body.EnvSource != nil {
+			payload["env_source"] = *body.EnvSource
+		}
+		if body.UserInConv != nil {
+			payload["user_in_conv"] = *body.UserInConv
+		}
+		// Telefone de alerta: se toggle desligado, limpar; caso contrário normalizar/validar
+		if body.DisconnectAlert != nil && !*body.DisconnectAlert {
+			payload["disconnect_alert_phone"] = nil
+		} else if body.DisconnectAlertPhone != nil {
+			p := strings.TrimSpace(*body.DisconnectAlertPhone)
+			if strings.HasPrefix(p, "+") {
+				p = p[1:]
+			}
+			p = strings.ReplaceAll(p, " ", "")
+			// keep digits only
+			digits := make([]rune, 0, len(p))
+			for _, r := range p {
+				if r >= '0' && r <= '9' {
+					digits = append(digits, r)
+				}
+			}
+			clean := string(digits)
+			if len(clean) < 11 || len(clean) > 15 {
+				s.Respond(w, r, http.StatusBadRequest, errors.New("invalid phone format: use CountryCode+DDD+Number (11-15 digits)"))
+				return
+			}
+			payload["disconnect_alert_phone"] = clean
+		}
+
+		payloadBytes, _ := json.Marshal(payload)
+		httpClient := &http.Client{Timeout: 10 * time.Second}
+		reqPatch, _ := http.NewRequest("PATCH", patchURL, bytes.NewReader(payloadBytes))
+		reqPatch.Header.Set("apikey", supaKey)
+		reqPatch.Header.Set("Authorization", "Bearer "+supaKey)
+		reqPatch.Header.Set("Content-Type", "application/json")
+		reqPatch.Header.Set("Prefer", "return=representation")
+		resp, err := httpClient.Do(reqPatch)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("supabase rest error: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode/100 != 2 {
+			s.Respond(w, r, http.StatusBadGateway, errors.New("failed to update instance settings in supabase"))
+			return
+		}
+		s.respondWithJSON(w, http.StatusOK, map[string]any{"success": true})
+	}
+}
+
+// Returns profile info (push name and avatar URL) for a given phone/JID
+func (s *server) GetUserProfile() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+		cli := clientManager.GetWhatsmeowClient(txtid)
+		if cli == nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("no session"))
+			return
+		}
+
+		// Decode tolerant: accept phone as string or number; preview as bool or string
+		var raw map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid payload"))
+			return
+		}
+
+		toString := func(v interface{}) string {
+			switch t := v.(type) {
+			case string:
+				return t
+			case float64:
+				// numbers from JSON are float64; format without decimals
+				return strconv.FormatInt(int64(t), 10)
+			case int:
+				return strconv.FormatInt(int64(t), 10)
+			case int64:
+				return strconv.FormatInt(t, 10)
+			case bool:
+				if t {
+					return "true"
+				}
+				return "false"
+			default:
+				return ""
+			}
+		}
+		toBool := func(v interface{}) bool {
+			switch t := v.(type) {
+			case bool:
+				return t
+			case string:
+				lt := strings.ToLower(strings.TrimSpace(t))
+				return lt == "true" || lt == "1" || lt == "yes"
+			case float64:
+				return int64(t) != 0
+			default:
+				return false
+			}
+		}
+
+		in := strings.TrimSpace(toString(raw["phone"]))
+		if in == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid payload"))
+			return
+		}
+		preview := true
+		if v, ok := raw["preview"]; ok {
+			preview = toBool(v)
+		}
+
+		// Normalize input: accept number or JID. Remove device suffix (:NN) if present
+		base := in
+		if !strings.Contains(base, "@") {
+			base = base + "@s.whatsapp.net"
+		} else {
+			atIdx := strings.Index(base, "@")
+			user := base[:atIdx]
+			if cIdx := strings.Index(user, ":"); cIdx > 0 {
+				user = user[:cIdx]
+			}
+			base = user + "@s.whatsapp.net"
+		}
+
+		// Build JID
+		jid, ok := parseJID(base)
+		if !ok {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid phone/JID"))
+			return
+		}
+
+		// Try contacts store first
+		profileName := ""
+		if contact, err := cli.Store.Contacts.GetContact(context.Background(), jid); err == nil {
+			if contact.FullName != "" {
+				profileName = contact.FullName
+			} else if contact.PushName != "" {
+				profileName = contact.PushName
+			}
+		}
+
+		// Avatar lookup with timeout and fallback
+		avatarURL := ""
+		type result struct{ url string }
+		ch := make(chan result, 1)
+		go func() {
+			if pic, err := cli.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{Preview: preview}); err == nil && pic != nil && pic.URL != "" {
+				ch <- result{url: pic.URL}
+				return
+			}
+			if pic, err := cli.GetProfilePictureInfo(jid, &whatsmeow.GetProfilePictureParams{Preview: false}); err == nil && pic != nil && pic.URL != "" {
+				ch <- result{url: pic.URL}
+				return
+			}
+			ch <- result{url: ""}
+		}()
+		select {
+		case res := <-ch:
+			avatarURL = res.url
+		case <-time.After(5 * time.Second):
+			avatarURL = ""
+		}
+
+		// Number
+		number := base
+		if idx := strings.Index(base, "@"); idx > 0 {
+			number = base[:idx]
+		}
+
+		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{
+			"jid":           base,
+			"number":        number,
+			"profileName":   profileName,
+			"profilePicUrl": avatarURL,
+		})
+	}
+}
+
+// Toggle ignore of group messages for the current user
+func (s *server) SetIgnoreGroups() http.HandlerFunc {
+	type payload struct {
+		Ignore bool `json:"ignore"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+		var p payload
+		if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid payload"))
+			return
+		}
+		if p.Ignore {
+			_, _ = s.db.Exec("UPDATE users SET ignore_groups=true WHERE id=$1", txtid)
+		} else {
+			_, _ = s.db.Exec("UPDATE users SET ignore_groups=false WHERE id=$1", txtid)
+		}
+		s.respondWithJSON(w, http.StatusOK, map[string]interface{}{"Details": "Updated", "ignore": p.Ignore})
 	}
 }
 
@@ -2984,6 +3641,106 @@ func (s *server) DownloadAudio() http.HandlerFunc {
 			s.Respond(w, r, http.StatusOK, string(responseJson))
 		}
 		return
+	}
+}
+
+// Downloads Sticker and returns base64 representation
+func (s *server) DownloadSticker() http.HandlerFunc {
+
+	type downloadStickerStruct struct {
+		Url           string
+		DirectPath    string
+		MediaKey      []byte
+		Mimetype      string
+		FileEncSHA256 []byte
+		FileSHA256    []byte
+		FileLength    uint64
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+
+		mimetype := ""
+		var dataBytes []byte
+
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
+			return
+		}
+
+		// ensure user directory exists (kept for parity/logs)
+		userDirectory := filepath.Join(s.exPath, "files", "user_"+txtid)
+		if _, err := os.Stat(userDirectory); os.IsNotExist(err) {
+			if errDir := os.MkdirAll(userDirectory, 0751); errDir != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("could not create user directory (%s)", userDirectory)))
+				return
+			}
+		}
+
+		decoder := json.NewDecoder(r.Body)
+		var t downloadStickerStruct
+		if err := decoder.Decode(&t); err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
+			return
+		}
+
+		msg := &waE2E.Message{StickerMessage: &waE2E.StickerMessage{
+			URL:           proto.String(t.Url),
+			DirectPath:    proto.String(t.DirectPath),
+			MediaKey:      t.MediaKey,
+			Mimetype:      proto.String(t.Mimetype),
+			FileEncSHA256: t.FileEncSHA256,
+			FileSHA256:    t.FileSHA256,
+			FileLength:    &t.FileLength,
+		}}
+
+		st := msg.GetStickerMessage()
+		if st != nil {
+			var err error
+			dataBytes, err = clientManager.GetWhatsmeowClient(txtid).Download(context.Background(), st)
+			if err != nil {
+				log.Error().Str("error", fmt.Sprintf("%v", err)).Msg("failed to download sticker")
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to download sticker %v", err)))
+				return
+			}
+			mimetype = st.GetMimetype()
+		}
+
+		du := dataurl.New(dataBytes, mimetype)
+		response := map[string]interface{}{"Mimetype": mimetype, "Data": du.String()}
+		if responseJson, err := json.Marshal(response); err != nil {
+			s.Respond(w, r, http.StatusInternalServerError, err)
+		} else {
+			s.Respond(w, r, http.StatusOK, string(responseJson))
+		}
+		return
+	}
+}
+
+// GetBase64ByMessageID: baixa mídia de uma mensagem (se disponível) e retorna base64/mime/filename
+func (s *server) GetBase64ByMessageID() http.HandlerFunc {
+	type req struct {
+		Id string `json:"Id"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		txtid := r.Context().Value("userinfo").(Values).Get("Id")
+		if clientManager.GetWhatsmeowClient(txtid) == nil {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("no session"))
+			return
+		}
+		var body req
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Id) == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Id in payload"))
+			return
+		}
+
+		// Busca mensagem recente do cache (temos Info da última, mas não a mensagem completa). Para simplicidade,
+		// tentaremos os tipos mais comuns usando MessageServer lookup mínimo: como não temos store indexado por ID aqui,
+		// exigiremos do cliente os metadados via endpoints clássicos se falhar.
+		// Nesta versão: retornamos 422 informando que é necessário usar os endpoints /chat/download* quando não houver metadados suficientes.
+
+		s.Respond(w, r, http.StatusUnprocessableEntity, errors.New("media not available by Id only; use /chat/downloadimage|video|audio|document|sticker with metadata"))
 	}
 }
 
