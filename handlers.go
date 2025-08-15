@@ -733,6 +733,51 @@ func (s *server) GetStatus() http.HandlerFunc {
 			number = baseJIDStr[:idx]
 		}
 
+		// Persistir no Supabase (instances): numero_conectado, profile_name, profile_pic_url
+		// Fazemos de forma assíncrona para não impactar o tempo de resposta do status
+		func() {
+			// só tenta quando temos um id válido
+			if txtid == "" {
+				return
+			}
+			var instanceName, apiKey string
+			if err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", txtid).Scan(&instanceName, &apiKey); err != nil {
+				log.Debug().Err(err).Msg("GetStatus: could not read instance name/token for Supabase persistence")
+				return
+			}
+			supaURL := os.Getenv("SUPABASE_URL")
+			supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
+			if supaKey == "" {
+				supaKey = os.Getenv("SUPABASE_ANON_KEY")
+			}
+			if supaURL == "" || supaKey == "" {
+				return
+			}
+			patchURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+			payload := map[string]any{
+				"numero_conectado": number,
+				"profile_name":     profileName,
+				"profile_pic_url":  avatarURL,
+			}
+			go func() {
+				b, _ := json.Marshal(payload)
+				hc := &http.Client{Timeout: 5 * time.Second}
+				reqPatch, _ := http.NewRequest("PATCH", patchURL, strings.NewReader(string(b)))
+				reqPatch.Header.Set("apikey", supaKey)
+				reqPatch.Header.Set("Authorization", "Bearer "+supaKey)
+				reqPatch.Header.Set("Content-Type", "application/json")
+				resp, err := hc.Do(reqPatch)
+				if err != nil {
+					log.Warn().Err(err).Msg("Supabase persistence (status) failed")
+					return
+				}
+				_ = resp.Body.Close()
+				if resp.StatusCode/100 != 2 {
+					log.Warn().Int("status", resp.StatusCode).Msg("Supabase persistence (status) non-2xx")
+				}
+			}()
+		}()
+
 		response := map[string]interface{}{
 			"id":              txtid,
 			"name":            userInfo.Get("Name"),
