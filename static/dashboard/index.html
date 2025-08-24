@@ -96,6 +96,65 @@
       </div>
     </div>
     <div class="ui mb-4">
+      <!-- Instances Filters -->
+      <div class="ui segment" id="instances-filters-bar">
+        <div class="ui stackable grid">
+          <div class="six wide column">
+            <div class="ui icon input fluid">
+              <input type="text" id="instancesSearch" placeholder="Search by ID or Name...">
+              <i class="search icon"></i>
+            </div>
+          </div>
+          <div class="four wide column">
+            <select class="ui fluid dropdown" id="filterConnected">
+              <option value="">Connected: All</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="four wide column">
+            <select class="ui fluid dropdown" id="filterLoggedIn">
+              <option value="">Logged In: All</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div class="two wide column right aligned">
+            <button class="ui button" id="instancesFiltersClear"><i class="undo icon"></i> Reset</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Instances Statistics -->
+      <div class="ui segment" id="instances-stats-bar" style="display: none;">
+        <div class="ui stackable four column grid">
+          <div class="column">
+            <div class="ui statistic" style="color: #ffffff;">
+              <div class="value" id="stat-total" style="color: #ffffff;">0</div>
+              <div class="label" style="color: #cccccc;">Total</div>
+            </div>
+          </div>
+          <div class="column">
+            <div class="ui statistic" style="color: #21ba45;">
+              <div class="value" id="stat-connected" style="color: #21ba45;">0</div>
+              <div class="label" style="color: #cccccc;">Connected</div>
+            </div>
+          </div>
+          <div class="column">
+            <div class="ui statistic" style="color: #db2828;">
+              <div class="value" id="stat-disconnected" style="color: #db2828;">0</div>
+              <div class="label" style="color: #cccccc;">Disconnected</div>
+            </div>
+          </div>
+          <div class="column">
+            <div class="ui statistic" style="color: #2185d0;">
+              <div class="value" id="stat-logged-in" style="color: #2185d0;">0</div>
+              <div class="label" style="color: #cccccc;">Logged In</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
       <div class="ui active inverted dimmer" id="loading">
         <div class="ui text loader">Loading instances...</div>
       </div>
@@ -242,7 +301,28 @@
         <div class="ui form" style="margin-bottom:16px; display:flex; align-items:center; gap:12px;">
           <button class="ui green button" id="btnConnectGHL"><i class="plug icon"></i> Conectar GHL</button>
           <div id="ghlConnInfo" class="ui tiny label"></div>
+          <div class="ui tiny label" id="ghlRefContainer" style="background:rgba(255,255,255,.06); color:#fff;">
+            Nº de Referência: <span id="ghl-ref-display">-</span>
+            <button class="ui icon mini grey basic button" id="ghlRefEditBtn" title="Editar" style="margin-left:8px;"><i class="edit icon"></i></button>
+          </div>
           <small>Ao clicar, iniciamos o OAuth do GHL com base nos dados da sua instância.</small>
+        </div>
+
+        <!-- Modal: editar referência -->
+        <div class="ui small modal" id="modalEditRef">
+          <div class="header"><i class="hashtag icon"></i> Alterar Nº de Referência</div>
+          <div class="content">
+            <div class="ui form">
+              <div class="field">
+                <label>Nº de Referência</label>
+                <input type="text" id="inputRefInstance" placeholder="Ex: 2">
+              </div>
+            </div>
+          </div>
+          <div class="actions">
+            <div class="ui button" id="cancelRefEditBtn">Cancelar</div>
+            <div class="ui green button" id="saveRefEditBtn"><i class="save icon"></i> Salvar</div>
+          </div>
         </div>
 
         <div class="ui very relaxed divided list">
@@ -281,17 +361,154 @@
         </div>
       </div>
 
-      <div class="ui tab" data-tab="ghl-voice-stevo"><div class="ui info message">Em breve</div></div>
+      <div class="ui tab" data-tab="ghl-voice-stevo">
+        <h3 class="ui header"><i class="phone icon"></i> STEVO VOICE</h3>
+        <div class="ui segments">
+          <div class="ui segment">
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+              <button class="ui teal button" id="openVoicePanelMainBtn"><i class="external alternate icon"></i> Painel Stevo Voice</button>
+              <button class="ui icon basic button" id="copyVoicePanelBtn" title="Copiar URL"><i class="copy icon"></i></button>
+            </div>
+            <div class="ui tiny muted" style="margin-top:6px;opacity:.8;">Acesse o painel para gerenciar suas chamadas de voz</div>
+          </div>
+
+          <div class="ui segment" id="voiceActiveBox" style="display:block;">
+            <h4 class="ui header"><i class="phone volume icon"></i> STEVO VOICE ATIVO</h4>
+            <div style="display:grid;grid-template-columns:180px 1fr;gap:4px 12px;align-items:center;">
+              <div style="opacity:.8;">Número:</div>
+              <div id="voiceNumberText">-</div>
+              <div style="opacity:.8;">Status:</div>
+              <div><span id="voiceStatusText">Status desconhecido</span></div>
+              <div style="opacity:.8;">Stevo Voice Token:</div>
+              <div style="display:flex;align-items:center;gap:8px;word-break:break-all;">
+                <span id="voiceTokenText">-</span>
+                <button class="ui tiny basic button" id="copyVoiceTokenBtn" title="Copiar token"><i class="copy icon"></i></button>
+              </div>
+            </div>
+            <div class="ui buttons" style="margin-top:10px;gap:8px;">
+              <button class="ui green button" id="btnCreateStevoVoice"><i class="plus icon"></i> Criar Stevo Voice</button>
+              <button class="ui orange button" id="btnVoiceRefreshQR"><i class="redo icon"></i> Atualizar QRCode</button>
+              <button class="ui blue button" id="btnVoiceStatus"><i class="sync icon"></i> Verificar Status</button>
+              <button class="ui red button" id="btnVoiceDelete"><i class="trash icon"></i> Excluir</button>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="ui tab" data-tab="ghl-sms"><div class="ui info message">Em breve</div></div>
       <div class="ui tab" data-tab="ghl-stevo-ia"><div class="ui info message">Em breve</div></div>
-      <div class="ui tab" data-tab="ghl-voice-ia"><div class="ui info message">Em breve</div></div>
+      <div class="ui tab" data-tab="ghl-voice-ia">
+        <h3 class="ui header"><i class="robot icon"></i> STEVO IA</h3>
+        <div class="ui segments">
+          <div class="ui segment">
+            <h4 class="ui header"><i class="key icon"></i> Chave OpenAI</h4>
+            <div class="ui action input fluid">
+              <input type="password" id="openaiKeyInput" placeholder="sk-...">
+              <button class="ui button" id="loadOpenAIVoicesBtn"><i class="sync icon"></i> Carregar Vozes</button>
+            </div>
+            <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
+              <div class="ui fluid search selection dropdown" id="openaiVoiceDropdown" style="min-width:280px;">
+                <input type="hidden" id="openaiVoiceValue">
+                <i class="dropdown icon"></i>
+                <div class="default text">Selecione uma voz</div>
+                <div class="menu" id="openaiVoiceMenu"></div>
+              </div>
+              <div id="openaiVoiceSelected" class="ui tiny label"></div>
+            </div>
+          </div>
+          <div class="ui segment">
+            <h4 class="ui header"><i class="key icon"></i> Chave ElevenLabs</h4>
+            <div class="ui action input fluid">
+              <input type="password" id="elevenKeyInput" placeholder="el_...">
+              <button class="ui button" id="loadElevenVoicesBtn"><i class="sync icon"></i> Carregar Vozes</button>
+            </div>
+            <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
+              <div class="ui fluid search selection dropdown" id="elevenVoiceDropdown" style="min-width:280px;">
+                <input type="hidden" id="elevenVoiceValue">
+                <i class="dropdown icon"></i>
+                <div class="default text">Selecione uma voz</div>
+                <div class="menu" id="elevenVoiceMenu"></div>
+              </div>
+              <div id="elevenVoiceSelected" class="ui tiny label"></div>
+            </div>
+          </div>
+          <div class="ui segment right aligned">
+            <button class="ui green button" id="saveVoiceAISettings"><i class="save icon"></i> Salvar Configurações</button>
+          </div>
+        </div>
+      </div>
       <div class="ui tab" data-tab="ghl-calls"><div class="ui info message">Em breve</div></div>
       <div class="ui tab" data-tab="ghl-spintax"><div class="ui info message">Em breve</div></div>
-      <div class="ui tab" data-tab="ghl-trigger"><div class="ui info message">Em breve</div></div>
+      <div class="ui tab" data-tab="ghl-trigger">
+        <h3 class="ui header">
+          <i class="bolt icon"></i>
+          <div class="content">Trigger
+            <div class="sub header">Ative e configure até 5 gatilhos no formato: "Palavra ou frase | tag escolhida"</div>
+          </div>
+        </h3>
+        <div class="ui form">
+          <div class="field" style="display:flex;justify-content:space-between;align-items:center;">
+            <label>Ativar Trigger</label>
+            <div class="ui toggle checkbox" id="ghl-toggle-trigger">
+              <input type="checkbox" id="ghl-trigger-enabled">
+              <label></label>
+            </div>
+          </div>
+          <div class="ui stackable grid">
+            <div class="eight wide column">
+              <div class="field">
+                <label>Trigger 1</label>
+                <input type="text" id="ghl-trigger-1" placeholder="Palavra ou frase | tag escolhida">
+              </div>
+            </div>
+            <div class="eight wide column">
+              <div class="field">
+                <label>Trigger 2</label>
+                <input type="text" id="ghl-trigger-2" placeholder="Palavra ou frase | tag escolhida">
+              </div>
+            </div>
+            <div class="eight wide column">
+              <div class="field">
+                <label>Trigger 3</label>
+                <input type="text" id="ghl-trigger-3" placeholder="Palavra ou frase | tag escolhida">
+              </div>
+            </div>
+            <div class="eight wide column">
+              <div class="field">
+                <label>Trigger 4</label>
+                <input type="text" id="ghl-trigger-4" placeholder="Palavra ou frase | tag escolhida">
+              </div>
+            </div>
+            <div class="eight wide column">
+              <div class="field">
+                <label>Trigger 5</label>
+                <input type="text" id="ghl-trigger-5" placeholder="Palavra ou frase | tag escolhida">
+              </div>
+            </div>
+          </div>
+          <div class="ui message info">
+            Formato: exemplo "promoção | lead-tag". As tags devem existir no destino onde serão aplicadas.
+          </div>
+        </div>
+      </div>
     </div>
     <div class="actions">
       <div class="ui cancel button secondary">Cancelar</div>
       <div class="ui positive right labeled icon button" id="ghlSaveSettings">Salvar<i class="checkmark icon"></i></div>
+    </div>
+  </div>
+
+  <!-- Modal: Stevo Voice QR -->
+  <div class="ui small modal" id="modalVoiceQR">
+    <i class="close icon"></i>
+    <div class="header"><i class="qrcode icon"></i> Conectar ao Stevo Voice</div>
+    <div class="content" style="text-align:center;">
+      <div id="voiceQRContainer" style="display:flex;justify-content:center;align-items:center;min-height:220px;"></div>
+      <div class="ui tiny message" id="voiceQRInfo" style="margin-top:12px;">Escaneie o QR no WhatsApp. Expira em <span id="voiceQRCountdown">40</span>s.</div>
+    </div>
+    <div class="actions">
+      <button class="ui black button" id="voiceQRBackBtn"><i class="arrow left icon"></i> Voltar</button>
+      <button class="ui orange button" id="voiceQRRefreshBtn"><i class="redo icon"></i> Atualizar QRCode</button>
+      <button class="ui blue button" id="voiceQRStatusBtn"><i class="sync icon"></i> Verificar Status</button>
     </div>
   </div>
 
@@ -1072,6 +1289,7 @@
       </div>
     </div>
     <div class="actions">
+      <div class="ui teal button" id="exportParticipantsBtn"><i class="download icon"></i> Export Numbers</div>
       <div class="ui black deny button">Close</div>
     </div>
   </div>
@@ -1151,6 +1369,145 @@
     </div>
     <div class="actions">
       <div class="ui button">Close</div>
+    </div>
+  </div>
+
+  <!-- ==========================================
+       CHAT INTEGRADO MODAL
+  ========================================== -->
+  <div class="ui fullscreen modal" id="chatModal">
+    <div class="chat-container">
+      
+      <!-- Loading Screen -->
+      <div class="chat-loading hidden">
+        <div class="ui active inverted dimmer">
+          <div class="ui large text loader">Carregando chat...</div>
+        </div>
+      </div>
+      
+      <!-- Chat Content -->
+      <div class="chat-content hidden">
+        
+        <!-- Chat Header -->
+        <div class="chat-header">
+          <div class="chat-header-content">
+            <button class="ui icon button" onclick="$('#chatModal').modal('hide')">
+              <i class="arrow left icon"></i>
+            </button>
+            <div class="chat-header-title">
+              <h3 id="chatInstanceTitle">Chat - Instância</h3>
+              <div id="chatInstanceStatus" class="chat-status">Online</div>
+            </div>
+            <div class="chat-header-actions">
+              <button class="ui icon button" title="Configurações">
+                <i class="cog icon"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Chat Body -->
+        <div class="chat-body">
+          
+          <!-- Conversations Sidebar -->
+          <div class="chat-sidebar">
+            <div class="chat-sidebar-header">
+              <h4 class="ui header">
+                <i class="comments icon"></i>
+                Conversas
+              </h4>
+              <div class="ui icon input fluid">
+                <input type="text" placeholder="Buscar conversas..." id="chatSearchInput">
+                <i class="search icon"></i>
+              </div>
+            </div>
+            
+            <div class="chat-conversations-list" id="chatConversationsList">
+              <!-- Conversas serão populadas aqui via JavaScript -->
+            </div>
+            
+            <!-- Empty State -->
+            <div class="chat-empty-conversations hidden">
+              <div class="ui icon header">
+                <i class="inbox icon"></i>
+                Nenhuma conversa
+              </div>
+              <p>As conversas aparecerão aqui conforme você receber mensagens.</p>
+            </div>
+          </div>
+          
+          <!-- Messages Area -->
+          <div class="chat-main">
+            
+            <!-- Chat Header for Active Conversation -->
+            <div class="chat-conversation-header hidden" id="chatConversationHeader">
+              <div class="chat-contact-info">
+                <div class="chat-contact-avatar">
+                  <i class="user circle large icon"></i>
+                </div>
+                <div class="chat-contact-details">
+                  <div class="chat-contact-name" id="chatContactName">Selecione uma conversa</div>
+                  <div class="chat-contact-status" id="chatContactStatus">Online</div>
+                </div>
+              </div>
+              <div class="chat-conversation-actions">
+                <button class="ui icon button" title="Informações">
+                  <i class="info circle icon"></i>
+                </button>
+                <button class="ui icon button" title="Chamada">
+                  <i class="phone icon"></i>
+                </button>
+              </div>
+            </div>
+            
+            <!-- Messages Container -->
+            <div class="chat-messages-container" id="chatMessagesContainer">
+              <!-- Mensagens serão populadas aqui via JavaScript -->
+            </div>
+            
+            <!-- Empty State for Messages -->
+            <div class="chat-empty-messages" id="chatEmptyMessages">
+              <div class="ui icon header">
+                <i class="comment outline icon"></i>
+                Selecione uma conversa
+              </div>
+              <p>Escolha uma conversa na lista ao lado para ver as mensagens.</p>
+            </div>
+            
+            <!-- Message Input -->
+            <div class="chat-input-container" id="chatInputContainer">
+              <div class="chat-input-area">
+                <div class="ui action input fluid">
+                  <input type="text" 
+                         placeholder="Digite uma mensagem..." 
+                         id="chatMessageInput"
+                         maxlength="4096">
+                  <button class="ui icon button" 
+                          onclick="sendChatMessage()"
+                          title="Enviar mensagem">
+                    <i class="paper plane icon"></i>
+                  </button>
+                </div>
+                <div class="chat-input-actions">
+                  <button class="ui icon button" title="Emoji">
+                    <i class="smile outline icon"></i>
+                  </button>
+                  <button class="ui icon button" title="Anexar">
+                    <i class="paperclip icon"></i>
+                  </button>
+                  <button class="ui icon button" onclick="window.testSimpleSound();" title="Testar som de notificação">
+                    <i class="volume up icon"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+          </div>
+          
+        </div>
+        
+      </div>
+      
     </div>
   </div>
 

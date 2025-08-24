@@ -3,16 +3,20 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -1078,7 +1082,7 @@ func (s *server) GHLStatus() http.HandlerFunc {
 			return
 		}
 
-		restURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?select=id,user_id,ghl_location_id,env_source,user_in_conv,disconnect_alert_phone&instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+		restURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?select=id,user_id,ghl_location_id,env_source,user_in_conv,disconnect_alert_phone,trigger,trigger_1,trigger_2,trigger_3,trigger_4,trigger_5,ref_instance&instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
 		httpClient := &http.Client{Timeout: 10 * time.Second}
 		reqRest, _ := http.NewRequest("GET", restURL, nil)
 		reqRest.Header.Set("apikey", supaKey)
@@ -1092,6 +1096,13 @@ func (s *server) GHLStatus() http.HandlerFunc {
 			EnvSource       *bool   `json:"env_source"`
 			UserInConv      *bool   `json:"user_in_conv"`
 			DisconnectPhone *string `json:"disconnect_alert_phone"`
+			Trigger         *bool   `json:"trigger"`
+			Trigger1        *string `json:"trigger_1"`
+			Trigger2        *string `json:"trigger_2"`
+			Trigger3        *string `json:"trigger_3"`
+			Trigger4        *string `json:"trigger_4"`
+			Trigger5        *string `json:"trigger_5"`
+			RefInstance     *string `json:"ref_instance"`
 		}
 		var rows []row
 		resp, err := httpClient.Do(reqRest)
@@ -1112,6 +1123,13 @@ func (s *server) GHLStatus() http.HandlerFunc {
 			"env_source":             rows[0].EnvSource,
 			"user_in_conv":           rows[0].UserInConv,
 			"disconnect_alert_phone": rows[0].DisconnectPhone,
+			"trigger":                rows[0].Trigger,
+			"trigger_1":              rows[0].Trigger1,
+			"trigger_2":              rows[0].Trigger2,
+			"trigger_3":              rows[0].Trigger3,
+			"trigger_4":              rows[0].Trigger4,
+			"trigger_5":              rows[0].Trigger5,
+			"ref_instance":           rows[0].RefInstance,
 		})
 	}
 }
@@ -1176,6 +1194,13 @@ func (s *server) GHLUpdateSettings() http.HandlerFunc {
 		UserInConv           *bool   `json:"user_in_conv"`
 		DisconnectAlertPhone *string `json:"disconnect_alert_phone"`
 		DisconnectAlert      *bool   `json:"disconnect_alert"`
+		Trigger              *bool   `json:"trigger"`
+		Trigger1             *string `json:"trigger_1"`
+		Trigger2             *string `json:"trigger_2"`
+		Trigger3             *string `json:"trigger_3"`
+		Trigger4             *string `json:"trigger_4"`
+		Trigger5             *string `json:"trigger_5"`
+		RefInstance          *string `json:"ref_instance"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := r.Context().Value("userinfo").(Values)
@@ -1211,7 +1236,6 @@ func (s *server) GHLUpdateSettings() http.HandlerFunc {
 		if body.UserInConv != nil {
 			payload["user_in_conv"] = *body.UserInConv
 		}
-		// Telefone de alerta: se toggle desligado, limpar; caso contrário normalizar/validar
 		if body.DisconnectAlert != nil && !*body.DisconnectAlert {
 			payload["disconnect_alert_phone"] = nil
 		} else if body.DisconnectAlertPhone != nil {
@@ -1220,24 +1244,44 @@ func (s *server) GHLUpdateSettings() http.HandlerFunc {
 				p = p[1:]
 			}
 			p = strings.ReplaceAll(p, " ", "")
-			// keep digits only
-			digits := make([]rune, 0, len(p))
-			for _, r := range p {
-				if r >= '0' && r <= '9' {
-					digits = append(digits, r)
+			d := make([]rune, 0, len(p))
+			for _, ch := range p {
+				if ch >= '0' && ch <= '9' {
+					d = append(d, ch)
 				}
 			}
-			clean := string(digits)
-			if len(clean) < 11 || len(clean) > 15 {
-				s.Respond(w, r, http.StatusBadRequest, errors.New("invalid phone format: use CountryCode+DDD+Number (11-15 digits)"))
-				return
+			payload["disconnect_alert_phone"] = string(d)
+		}
+		if body.Trigger != nil {
+			payload["trigger"] = *body.Trigger
+		}
+		if body.Trigger1 != nil {
+			payload["trigger_1"] = strings.TrimSpace(*body.Trigger1)
+		}
+		if body.Trigger2 != nil {
+			payload["trigger_2"] = strings.TrimSpace(*body.Trigger2)
+		}
+		if body.Trigger3 != nil {
+			payload["trigger_3"] = strings.TrimSpace(*body.Trigger3)
+		}
+		if body.Trigger4 != nil {
+			payload["trigger_4"] = strings.TrimSpace(*body.Trigger4)
+		}
+		if body.Trigger5 != nil {
+			payload["trigger_5"] = strings.TrimSpace(*body.Trigger5)
+		}
+		if body.RefInstance != nil {
+			v := strings.TrimSpace(*body.RefInstance)
+			if v == "" {
+				payload["ref_instance"] = nil
+			} else {
+				payload["ref_instance"] = v
 			}
-			payload["disconnect_alert_phone"] = clean
 		}
 
-		payloadBytes, _ := json.Marshal(payload)
+		bodyBytes, _ := json.Marshal(payload)
 		httpClient := &http.Client{Timeout: 10 * time.Second}
-		reqPatch, _ := http.NewRequest("PATCH", patchURL, bytes.NewReader(payloadBytes))
+		reqPatch, _ := http.NewRequest("PATCH", patchURL, bytes.NewReader(bodyBytes))
 		reqPatch.Header.Set("apikey", supaKey)
 		reqPatch.Header.Set("Authorization", "Bearer "+supaKey)
 		reqPatch.Header.Set("Content-Type", "application/json")
@@ -1249,10 +1293,480 @@ func (s *server) GHLUpdateSettings() http.HandlerFunc {
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode/100 != 2 {
-			s.Respond(w, r, http.StatusBadGateway, errors.New("failed to update instance settings in supabase"))
+			s.Respond(w, r, http.StatusBadGateway, errors.New("failed to update instance in supabase"))
+			return
+		}
+
+		s.respondWithJSON(w, http.StatusOK, map[string]any{"success": true})
+	}
+}
+
+// Stevo Voice: cria instância, salva no Supabase e retorna QR (base64)
+func (s *server) VoiceCreate() http.HandlerFunc {
+	type respData struct {
+		QRBase64 string `json:"qr_base64"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+
+		var instanceName, apiKey string
+		if err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", txtid).Scan(&instanceName, &apiKey); err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+
+		body := map[string]any{"instanceName": instanceName}
+		b, _ := json.Marshal(body)
+		httpClient := &http.Client{Timeout: 20 * time.Second}
+		req, _ := http.NewRequest("POST", "https://hookps.stevo.chat/webhook/criarstevovoip", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("voice create error: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode/100 != 2 {
+			raw, _ := io.ReadAll(resp.Body)
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("voice create failed: %s", string(raw)))
+			return
+		}
+
+		// Pode retornar binário (png) ou JSON com qr_base64. Detecta por content-type
+		ct := resp.Header.Get("Content-Type")
+		var qrBase64 string
+		if strings.HasPrefix(ct, "image/") {
+			raw, _ := io.ReadAll(resp.Body)
+			qrBase64 = "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(raw)
+		} else {
+			var j map[string]any
+			_ = json.NewDecoder(resp.Body).Decode(&j)
+			if v, ok := j["qr_base64"].(string); ok {
+				qrBase64 = v
+			}
+		}
+
+		// Atualiza Supabase: os webhooks externos já podem setar colunas, mas garantimos set de status básico
+		_ = s.updateSupabaseInstanceFields(instanceName, apiKey, map[string]any{"wavoip_status": "creating"})
+
+		s.respondWithJSON(w, http.StatusOK, respData{QRBase64: qrBase64})
+	}
+}
+
+// Stevo Voice: refresh QR
+func (s *server) VoiceRefreshQR() http.HandlerFunc {
+	type respData struct {
+		QRBase64 string `json:"qr_base64"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+		var instanceName string
+		if err := s.db.QueryRow("SELECT name FROM users WHERE id=$1", txtid).Scan(&instanceName); err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+		body := map[string]any{"instanceName": instanceName}
+		b, _ := json.Marshal(body)
+		httpClient := &http.Client{Timeout: 20 * time.Second}
+		req, _ := http.NewRequest("POST", "https://hookps.stevo.chat/webhook/refresh-qr-stevo", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("voice refresh error: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode/100 != 2 {
+			raw, _ := io.ReadAll(resp.Body)
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("voice refresh failed: %s", string(raw)))
+			return
+		}
+		ct := resp.Header.Get("Content-Type")
+		var qrBase64 string
+		if strings.HasPrefix(ct, "image/") {
+			raw, _ := io.ReadAll(resp.Body)
+			qrBase64 = "data:" + ct + ";base64," + base64.StdEncoding.EncodeToString(raw)
+		} else {
+			var j map[string]any
+			_ = json.NewDecoder(resp.Body).Decode(&j)
+			if v, ok := j["qr_base64"].(string); ok {
+				qrBase64 = v
+			}
+		}
+		s.respondWithJSON(w, http.StatusOK, respData{QRBase64: qrBase64})
+	}
+}
+
+// Stevo Voice: status
+func (s *server) VoiceStatus() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+		var instanceName, apiKey string
+		if err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", txtid).Scan(&instanceName, &apiKey); err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+		body := map[string]any{"instanceName": instanceName}
+		b, _ := json.Marshal(body)
+		httpClient := &http.Client{Timeout: 15 * time.Second}
+		req, _ := http.NewRequest("POST", "https://hookps.stevo.chat/webhook/confirmarstevovoip", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("voice status error: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+		var j map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&j)
+		if v, ok := j["status"].(string); ok {
+			_ = s.updateSupabaseInstanceFields(instanceName, apiKey, map[string]any{"wavoip_status": v})
+		}
+		s.respondWithJSON(w, http.StatusOK, j)
+	}
+}
+
+// Stevo Voice: delete instance
+func (s *server) VoiceDelete() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+		var instanceName, apiKey string
+		if err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", txtid).Scan(&instanceName, &apiKey); err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+		body := map[string]any{"instanceName": instanceName}
+		b, _ := json.Marshal(body)
+		httpClient := &http.Client{Timeout: 15 * time.Second}
+		req, _ := http.NewRequest("POST", "https://hookps.stevo.chat/webhook/deleteinstancestevovoice", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("voice delete error: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+		// O webhook já limpa as colunas; ainda assim podemos setar status localmente
+		_ = s.updateSupabaseInstanceFields(instanceName, apiKey, map[string]any{"wavoip_status": "deleted"})
+		s.respondWithJSON(w, http.StatusOK, map[string]any{"success": true})
+	}
+}
+
+// Stevo Voice: retorna info (status, número e token) direto do Supabase/instances
+func (s *server) VoiceInfo() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+		var instanceName, apiKey string
+		if err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", txtid).Scan(&instanceName, &apiKey); err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+
+		supaURL := os.Getenv("SUPABASE_URL")
+		supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
+		if supaKey == "" {
+			supaKey = os.Getenv("SUPABASE_ANON_KEY")
+		}
+		if supaURL == "" || supaKey == "" {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("supabase not configured"))
+			return
+		}
+
+		restURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?select=wavoip_status,wavoip_token,id_wavoip&instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+		httpClient := &http.Client{Timeout: 10 * time.Second}
+		reqRest, _ := http.NewRequest("GET", restURL, nil)
+		reqRest.Header.Set("apikey", supaKey)
+		reqRest.Header.Set("Authorization", "Bearer "+supaKey)
+		reqRest.Header.Set("Accept", "application/json")
+		var rows []map[string]interface{}
+		resp, err := httpClient.Do(reqRest)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("supabase rest error: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+		_ = json.NewDecoder(resp.Body).Decode(&rows)
+		if len(rows) == 0 {
+			s.respondWithJSON(w, http.StatusOK, map[string]any{"wavoip_status": "", "wavoip_token": "", "id_wavoip": ""})
+			return
+		}
+		s.respondWithJSON(w, http.StatusOK, rows[0])
+	}
+}
+
+// helper para PATCH no Supabase instances by instance_name+apikey
+func (s *server) updateSupabaseInstanceFields(instanceName, apiKey string, fields map[string]any) error {
+	supaURL := os.Getenv("SUPABASE_URL")
+	supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
+	if supaKey == "" {
+		supaKey = os.Getenv("SUPABASE_ANON_KEY")
+	}
+	if supaURL == "" || supaKey == "" {
+		return errors.New("supabase not configured")
+	}
+	patchURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+	payload, _ := json.Marshal(fields)
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	req, _ := http.NewRequest("PATCH", patchURL, bytes.NewReader(payload))
+	req.Header.Set("apikey", supaKey)
+	req.Header.Set("Authorization", "Bearer "+supaKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Prefer", "return=representation")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("supabase patch failed: %s", string(raw))
+	}
+	return nil
+}
+
+// VoiceAIInfo lê do Supabase as chaves/vozes configuradas (OpenAI/ElevenLabs)
+func (s *server) VoiceAIInfo() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+		var instanceName, apiKey string
+		if err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", txtid).Scan(&instanceName, &apiKey); err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+
+		supaURL := os.Getenv("SUPABASE_URL")
+		supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
+		if supaKey == "" {
+			supaKey = os.Getenv("SUPABASE_ANON_KEY")
+		}
+		if supaURL == "" || supaKey == "" {
+			s.Respond(w, r, http.StatusInternalServerError, errors.New("supabase not configured"))
+			return
+		}
+
+		restURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?select=openai_key,openai_gpt_voice,elevenlabs_key,elevenlabs_voice_id&instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+		httpClient := &http.Client{Timeout: 10 * time.Second}
+		reqRest, _ := http.NewRequest("GET", restURL, nil)
+		reqRest.Header.Set("apikey", supaKey)
+		reqRest.Header.Set("Authorization", "Bearer "+supaKey)
+		reqRest.Header.Set("Accept", "application/json")
+		var rows []map[string]interface{}
+		resp, err := httpClient.Do(reqRest)
+		if err != nil {
+			s.Respond(w, r, http.StatusBadGateway, fmt.Errorf("supabase rest error: %w", err))
+			return
+		}
+		defer resp.Body.Close()
+		_ = json.NewDecoder(resp.Body).Decode(&rows)
+		if len(rows) == 0 {
+			s.respondWithJSON(w, http.StatusOK, map[string]any{})
+			return
+		}
+		s.respondWithJSON(w, http.StatusOK, rows[0])
+	}
+}
+
+// VoiceAISave atualiza no Supabase as chaves e vozes selecionadas
+func (s *server) VoiceAISave() http.HandlerFunc {
+	type body struct {
+		OpenAIKey   *string `json:"openai_key"`
+		OpenAIVoice *string `json:"openai_gpt_voice"`
+		ElevenKey   *string `json:"elevenlabs_keys"`
+		ElevenVoice *string `json:"elevenlabs_voice_id"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+		var instanceName, apiKey string
+		if err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", txtid).Scan(&instanceName, &apiKey); err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+		var b body
+		if err := json.NewDecoder(r.Body).Decode(&b); err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid payload"))
+			return
+		}
+		fields := map[string]any{}
+		if b.OpenAIKey != nil {
+			if strings.TrimSpace(*b.OpenAIKey) == "" {
+				fields["openai_key"] = nil
+			} else {
+				fields["openai_key"] = *b.OpenAIKey
+			}
+		}
+		if b.OpenAIVoice != nil {
+			if strings.TrimSpace(*b.OpenAIVoice) == "" {
+				fields["openai_gpt_voice"] = nil
+			} else {
+				fields["openai_gpt_voice"] = *b.OpenAIVoice
+			}
+		}
+		if b.ElevenKey != nil {
+			if strings.TrimSpace(*b.ElevenKey) == "" {
+				fields["elevenlabs_key"] = nil
+			} else {
+				fields["elevenlabs_key"] = *b.ElevenKey
+			}
+		}
+		if b.ElevenVoice != nil {
+			if strings.TrimSpace(*b.ElevenVoice) == "" {
+				fields["elevenlabs_voice_id"] = nil
+			} else {
+				fields["elevenlabs_voice_id"] = *b.ElevenVoice
+			}
+		}
+		if len(fields) == 0 {
+			s.respondWithJSON(w, http.StatusOK, map[string]any{"success": true})
+			return
+		}
+		if err := s.updateSupabaseInstanceFields(instanceName, apiKey, fields); err != nil {
+			fmt.Println("voiceai_save: supabase patch error", err)
+			s.Respond(w, r, http.StatusBadGateway, err)
 			return
 		}
 		s.respondWithJSON(w, http.StatusOK, map[string]any{"success": true})
+	}
+}
+
+// VoiceAIVoices lista vozes do provedor (openai/elevenlabs)
+func (s *server) VoiceAIVoices() http.HandlerFunc {
+	type req struct {
+		Provider string  `json:"provider"`
+		APIKey   *string `json:"api_key"`
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := r.Context().Value("userinfo").(Values)
+		txtid := user.Get("Id")
+		var instanceName, apiKey string
+		if err := s.db.QueryRow("SELECT name, token FROM users WHERE id=$1", txtid).Scan(&instanceName, &apiKey); err != nil {
+			s.Respond(w, r, http.StatusNotFound, fmt.Errorf("instance not found: %w", err))
+			return
+		}
+		var q req
+		if err := json.NewDecoder(r.Body).Decode(&q); err != nil {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid payload"))
+			return
+		}
+		prov := strings.ToLower(strings.TrimSpace(q.Provider))
+		if prov == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("provider required"))
+			return
+		}
+
+		// fetch key from supabase if not provided
+		key := ""
+		if q.APIKey != nil {
+			key = strings.TrimSpace(*q.APIKey)
+		}
+		if key == "" {
+			// buscar direto no Supabase quando a chave não vier no payload
+			supaURL := os.Getenv("SUPABASE_URL")
+			supaKey := os.Getenv("SUPABASE_SERVICE_ROLE")
+			if supaKey == "" {
+				supaKey = os.Getenv("SUPABASE_ANON_KEY")
+			}
+			if supaURL == "" || supaKey == "" {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New("supabase not configured"))
+				return
+			}
+			restURL := strings.TrimRight(supaURL, "/") + "/rest/v1/instances?select=openai_key,elevenlabs_key&instance_name=eq." + url.QueryEscape(instanceName) + "&apikey=eq." + url.QueryEscape(apiKey)
+			httpClient := &http.Client{Timeout: 10 * time.Second}
+			reqRest, _ := http.NewRequest("GET", restURL, nil)
+			reqRest.Header.Set("apikey", supaKey)
+			reqRest.Header.Set("Authorization", "Bearer "+supaKey)
+			reqRest.Header.Set("Accept", "application/json")
+			var rows []map[string]interface{}
+			resp, err := httpClient.Do(reqRest)
+			if err == nil {
+				defer resp.Body.Close()
+				_ = json.NewDecoder(resp.Body).Decode(&rows)
+				if len(rows) > 0 {
+					if prov == "elevenlabs" {
+						if v, ok := rows[0]["elevenlabs_key"].(string); ok {
+							key = v
+						}
+					} else if prov == "openai" {
+						if v, ok := rows[0]["openai_key"].(string); ok {
+							key = v
+						}
+					}
+				}
+			}
+		}
+		if key == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("api_key required"))
+			return
+		}
+
+		httpClient := &http.Client{Timeout: 15 * time.Second}
+		type voice struct{ ID, Name string }
+		var list []voice
+		if prov == "elevenlabs" {
+			req, _ := http.NewRequest("GET", "https://api.elevenlabs.io/v1/voices", nil)
+			req.Header.Set("xi-api-key", key)
+			req.Header.Set("Accept", "application/json")
+			resp, err := httpClient.Do(req)
+			if err == nil && resp.StatusCode/100 == 2 {
+				defer resp.Body.Close()
+				var j struct {
+					Voices []struct {
+						VoiceID string `json:"voice_id"`
+						Name    string `json:"name"`
+					} `json:"voices"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&j); err == nil {
+					for _, v := range j.Voices {
+						list = append(list, voice{ID: v.VoiceID, Name: v.Name})
+					}
+				}
+			}
+		} else if prov == "openai" {
+			req, _ := http.NewRequest("GET", "https://api.openai.com/v1/voices", nil)
+			req.Header.Set("Authorization", "Bearer "+key)
+			req.Header.Set("Accept", "application/json")
+			resp, err := httpClient.Do(req)
+			if err == nil && resp.StatusCode/100 == 2 {
+				defer resp.Body.Close()
+				var j struct {
+					Data []struct {
+						ID   string `json:"id"`
+						Name string `json:"name"`
+					} `json:"data"`
+				}
+				if err := json.NewDecoder(resp.Body).Decode(&j); err == nil {
+					for _, v := range j.Data {
+						name := v.Name
+						if name == "" {
+							name = v.ID
+						}
+						list = append(list, voice{ID: v.ID, Name: name})
+					}
+				}
+			}
+			if len(list) == 0 {
+				// Fallback atualizado para TTS do OpenAI
+				defaults := []string{"alloy", "echo", "fable", "onyx", "nova", "shimmer", "coral", "verse", "ballad", "ash", "sage"}
+				for _, n := range defaults {
+					list = append(list, voice{ID: n, Name: strings.Title(n)})
+				}
+			}
+		} else {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("unsupported provider"))
+			return
+		}
+		// map to response
+		out := make([]map[string]string, 0, len(list))
+		for _, v := range list {
+			out = append(out, map[string]string{"id": v.ID, "name": v.Name})
+		}
+		s.respondWithJSON(w, http.StatusOK, map[string]any{"voices": out})
 	}
 }
 
@@ -1317,25 +1831,13 @@ func (s *server) GetUserProfile() http.HandlerFunc {
 			preview = toBool(v)
 		}
 
-		// Normalize input: accept number or JID. Remove device suffix (:NN) if present
-		base := in
-		if !strings.Contains(base, "@") {
-			base = base + "@s.whatsapp.net"
-		} else {
-			atIdx := strings.Index(base, "@")
-			user := base[:atIdx]
-			if cIdx := strings.Index(user, ":"); cIdx > 0 {
-				user = user[:cIdx]
-			}
-			base = user + "@s.whatsapp.net"
-		}
-
-		// Build JID
-		jid, ok := parseJID(base)
-		if !ok {
+		// Resolve JID com SmartDial BR (usa IsOnWhatsApp)
+		jid, err := validateMessageFieldsSmart(txtid, in, nil, nil)
+		if err != nil {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("invalid phone/JID"))
 			return
 		}
+		base := jid.String()
 
 		// Try contacts store first
 		profileName := ""
@@ -1412,6 +1914,7 @@ func (s *server) SendDocument() http.HandlerFunc {
 		Caption     string
 		Phone       string
 		Document    string
+		DocumentUrl string
 		FileName    string
 		Id          string
 		MimeType    string
@@ -1443,8 +1946,8 @@ func (s *server) SendDocument() http.HandlerFunc {
 			return
 		}
 
-		if t.Document == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Document in Payload"))
+		if t.Document == "" && t.DocumentUrl == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Document or DocumentUrl in Payload"))
 			return
 		}
 
@@ -1453,7 +1956,7 @@ func (s *server) SendDocument() http.HandlerFunc {
 			return
 		}
 
-		recipient, err := validateMessageFields(t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
+		recipient, err := validateMessageFieldsSmart(txtid, t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
 		if err != nil {
 			log.Error().Msg(fmt.Sprintf("%s", err))
 			s.Respond(w, r, http.StatusBadRequest, err)
@@ -1469,7 +1972,95 @@ func (s *server) SendDocument() http.HandlerFunc {
 		var uploaded whatsmeow.UploadResponse
 		var filedata []byte
 
-		if t.Document[0:29] == "data:application/octet-stream" {
+		if t.DocumentUrl != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			respHTTP, err := http.NewRequestWithContext(ctx, http.MethodGet, t.DocumentUrl, nil)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadRequest, errors.New("invalid DocumentUrl"))
+				return
+			}
+			res, err := http.DefaultClient.Do(respHTTP)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadGateway, errors.New(fmt.Sprintf("failed to fetch DocumentUrl: %v", err)))
+				return
+			}
+			defer res.Body.Close()
+			if res.StatusCode < 200 || res.StatusCode >= 300 {
+				s.Respond(w, r, http.StatusBadGateway, errors.New(fmt.Sprintf("DocumentUrl responded with status %d", res.StatusCode)))
+				return
+			}
+			uploaded, err = clientManager.GetWhatsmeowClient(txtid).UploadReader(ctx, res.Body, nil, whatsmeow.MediaDocument)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload file from URL: %v", err)))
+				return
+			}
+			mime := res.Header.Get("Content-Type")
+			if t.FileName == "" {
+				// try from URL path
+				u := t.DocumentUrl
+				name := u
+				if idx := strings.LastIndex(u, "/"); idx >= 0 && idx+1 < len(u) {
+					name = u[idx+1:]
+				}
+				if name == "" || strings.Contains(name, "?") || strings.HasSuffix(name, "/") {
+					// fallback generic
+					name = "document"
+				}
+				t.FileName = name
+			}
+
+			msg := &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{
+				URL:        proto.String(uploaded.URL),
+				FileName:   &t.FileName,
+				DirectPath: proto.String(uploaded.DirectPath),
+				MediaKey:   uploaded.MediaKey,
+				Mimetype: func() *string {
+					if t.MimeType != "" {
+						return &t.MimeType
+					}
+					if mime != "" {
+						return &mime
+					}
+					v := "application/octet-stream"
+					return &v
+				}(),
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    proto.Uint64(uploaded.FileLength),
+				Caption:       proto.String(t.Caption),
+			}}
+
+			if t.ContextInfo.StanzaID != nil {
+				msg.DocumentMessage.ContextInfo = &waE2E.ContextInfo{
+					StanzaID:      proto.String(*t.ContextInfo.StanzaID),
+					Participant:   proto.String(*t.ContextInfo.Participant),
+					QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
+				}
+			}
+			if t.ContextInfo.MentionedJID != nil {
+				if msg.DocumentMessage.ContextInfo == nil {
+					msg.DocumentMessage.ContextInfo = &waE2E.ContextInfo{}
+				}
+				msg.DocumentMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
+			}
+
+			resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+				return
+			}
+
+			log.Info().Str("timestamp", fmt.Sprintf("%v", resp.Timestamp)).Str("id", msgid).Msg("Message sent")
+			response := map[string]interface{}{"Details": "Sent", "Timestamp": resp.Timestamp.Unix(), "Id": msgid}
+			responseJson, err := json.Marshal(response)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, err)
+			} else {
+				s.Respond(w, r, http.StatusOK, string(responseJson))
+			}
+			return
+		} else if strings.HasPrefix(t.Document, "data:application/octet-stream") {
 			var dataURL, err = dataurl.DecodeString(t.Document)
 			if err != nil {
 				s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
@@ -1505,17 +2096,17 @@ func (s *server) SendDocument() http.HandlerFunc {
 		}}
 
 		if t.ContextInfo.StanzaID != nil {
-			msg.ExtendedTextMessage.ContextInfo = &waE2E.ContextInfo{
+			msg.DocumentMessage.ContextInfo = &waE2E.ContextInfo{
 				StanzaID:      proto.String(*t.ContextInfo.StanzaID),
 				Participant:   proto.String(*t.ContextInfo.Participant),
 				QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
 			}
 		}
 		if t.ContextInfo.MentionedJID != nil {
-			if msg.ExtendedTextMessage.ContextInfo == nil {
-				msg.ExtendedTextMessage.ContextInfo = &waE2E.ContextInfo{}
+			if msg.DocumentMessage.ContextInfo == nil {
+				msg.DocumentMessage.ContextInfo = &waE2E.ContextInfo{}
 			}
-			msg.ExtendedTextMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
+			msg.DocumentMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
 		}
 
 		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
@@ -1540,11 +2131,14 @@ func (s *server) SendDocument() http.HandlerFunc {
 func (s *server) SendAudio() http.HandlerFunc {
 
 	type audioStruct struct {
-		Phone       string
-		Audio       string
-		Caption     string
-		Id          string
-		ContextInfo waE2E.ContextInfo
+		Phone       string            `json:"Phone"`
+		Audio       string            `json:"Audio"`
+		AudioUrl    string            `json:"AudioUrl"`
+		AsPTT       bool              `json:"AsPTT"`
+		AsPTTAlt    bool              `json:"as_ptt"`
+		Caption     string            `json:"Caption"`
+		Id          string            `json:"Id"`
+		ContextInfo waE2E.ContextInfo `json:"ContextInfo"`
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -1565,18 +2159,22 @@ func (s *server) SendAudio() http.HandlerFunc {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode Payload"))
 			return
 		}
+		// mapear alias as_ptt
+		if !t.AsPTT && t.AsPTTAlt {
+			t.AsPTT = true
+		}
 
 		if t.Phone == "" {
 			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Phone in Payload"))
 			return
 		}
 
-		if t.Audio == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Audio in Payload"))
+		if t.Audio == "" && t.AudioUrl == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Audio or AudioUrl in Payload"))
 			return
 		}
 
-		recipient, err := validateMessageFields(t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
+		recipient, err := validateMessageFieldsSmart(txtid, t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
 		if err != nil {
 			log.Error().Msg(fmt.Sprintf("%s", err))
 			s.Respond(w, r, http.StatusBadRequest, err)
@@ -1592,68 +2190,575 @@ func (s *server) SendAudio() http.HandlerFunc {
 		var uploaded whatsmeow.UploadResponse
 		var filedata []byte
 
-		if t.Audio[0:14] == "data:audio/ogg" {
-			var dataURL, err = dataurl.DecodeString(t.Audio)
+		if t.AudioUrl != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.AudioUrl, nil)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadRequest, errors.New("invalid AudioUrl"))
+				return
+			}
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadGateway, errors.New(fmt.Sprintf("failed to fetch AudioUrl: %v", err)))
+				return
+			}
+			defer res.Body.Close()
+			if res.StatusCode < 200 || res.StatusCode >= 300 {
+				s.Respond(w, r, http.StatusBadGateway, errors.New(fmt.Sprintf("AudioUrl responded with status %d", res.StatusCode)))
+				return
+			}
+			// Sempre bufferiza para arquivo temporário para calcular duração e waveform
+			srcTmp, err := os.CreateTemp("", "audio-src-*.bin")
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to create temp file: %w", err))
+				return
+			}
+			defer func() { srcTmp.Close(); os.Remove(srcTmp.Name()) }()
+			if _, err := io.Copy(srcTmp, res.Body); err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to buffer audio: %w", err))
+				return
+			}
+			if _, err := srcTmp.Seek(0, 0); err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to rewind temp: %w", err))
+				return
+			}
+
+			var reader io.Reader = srcTmp
+			var tmpFile *os.File = srcTmp
+			transcoded := false
+			mime := res.Header.Get("Content-Type")
+
+			// Calcula duração do arquivo de origem (srcTmp)
+			secondsSrc := uint32(0)
+			{
+				// 1) nb_read_frames / sample_rate (mais confiável)
+				cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "a:0", "-count_frames", "1", "-show_entries", "stream=nb_read_frames,sample_rate", "-of", "csv=p=0:s=x", srcTmp.Name())
+				if out, errN := cmd.Output(); errN == nil {
+					parts := strings.Split(strings.TrimSpace(string(out)), "x")
+					if len(parts) == 2 {
+						if nf, errN := strconv.ParseFloat(parts[0], 64); errN == nil {
+							if sr, errS := strconv.ParseFloat(parts[1], 64); errS == nil && nf > 0 && sr > 0 {
+								secondsSrc = uint32(nf/sr + 0.9999)
+							}
+						}
+					}
+				}
+				// 2) stream=duration
+				if secondsSrc == 0 {
+					cmd2 := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=duration", "-of", "default=noprint_wrappers=1:nokey=1", srcTmp.Name())
+					if out2, err2 := cmd2.Output(); err2 == nil {
+						if dur, err3 := strconv.ParseFloat(strings.TrimSpace(string(out2)), 64); err3 == nil && dur > 0 {
+							secondsSrc = uint32(dur + 0.9999)
+						}
+					}
+				}
+				// 3) format=duration
+				if secondsSrc == 0 {
+					cmd3 := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", srcTmp.Name())
+					if out3, err3 := cmd3.Output(); err3 == nil {
+						if dur, err4 := strconv.ParseFloat(strings.TrimSpace(string(out3)), 64); err4 == nil && dur > 0 {
+							secondsSrc = uint32(dur + 0.9999)
+						}
+					}
+				}
+			}
+			// Transcodifica somente quando for PTT e não estiver em OGG/Opus
+			if t.AsPTT && !strings.Contains(strings.ToLower(mime), "audio/ogg") {
+				outTmp, err := os.CreateTemp("", "audio-ptt-*.ogg")
+				if err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to create output temp file: %w", err))
+					return
+				}
+				defer func() { outTmp.Close(); os.Remove(outTmp.Name()) }()
+				// PTT preferencial: opus 16kHz mono ~32kbps; força contêiner ogg
+				cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", srcTmp.Name(), "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:a", "32k", "-vbr", "on", "-compression_level", "10", "-application", "voip", "-f", "ogg", outTmp.Name())
+				if out, err := cmd.CombinedOutput(); err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("ffmpeg transcode error: %v - %s", err, string(out)))
+					return
+				}
+				if _, err := outTmp.Seek(0, 0); err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to rewind transcoded file: %w", err))
+					return
+				}
+				// Remux para garantir contêiner OGG canônico
+				remuxTmp, err := os.CreateTemp("", "audio-ptt-remux-*.ogg")
+				if err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to create remux temp file: %w", err))
+					return
+				}
+				defer func() { remuxTmp.Close(); os.Remove(remuxTmp.Name()) }()
+				remuxCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", outTmp.Name(), "-c", "copy", "-f", "ogg", remuxTmp.Name())
+				if out, err := remuxCmd.CombinedOutput(); err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("ffmpeg remux error: %v - %s", err, string(out)))
+					return
+				}
+				if _, err := remuxTmp.Seek(0, 0); err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to rewind remuxed file: %w", err))
+					return
+				}
+				// Define explicit reader from remuxed file
+				reader = remuxTmp
+				tmpFile = remuxTmp
+				mime = "audio/ogg; codecs=opus"
+				transcoded = true
+			}
+
+			// Quando não for PTT: se origem for WEBM/VIDEO/OGG/OPUS, transcodifica para AAC/M4A (compat iOS)
+			if !t.AsPTT {
+				lowMime := strings.ToLower(mime)
+				if strings.Contains(lowMime, "webm") || strings.HasPrefix(lowMime, "video/") || strings.Contains(lowMime, "ogg") || strings.Contains(lowMime, "opus") {
+					outTmp, err := os.CreateTemp("", "audio-aac-*.m4a")
+					if err != nil {
+						s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to create output temp file: %w", err))
+						return
+					}
+					defer func() { outTmp.Close(); os.Remove(outTmp.Name()) }()
+					cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", srcTmp.Name(), "-ac", "2", "-ar", "44100", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-f", "mp4", outTmp.Name())
+					if out, err := cmd.CombinedOutput(); err != nil {
+						s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("ffmpeg transcode (aac) error: %v - %s", err, string(out)))
+						return
+					}
+					if _, err := outTmp.Seek(0, 0); err != nil {
+						s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to rewind aac file: %w", err))
+						return
+					}
+					reader = outTmp
+					tmpFile = outTmp
+					mime = "audio/mp4"
+					transcoded = true
+				}
+			}
+
+			uploaded, err = clientManager.GetWhatsmeowClient(txtid).UploadReader(ctx, reader, tmpFile, whatsmeow.MediaAudio)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload audio from URL: %v", err)))
+				return
+			}
+
+			// Diagnostics: compute local file hash/size to compare with WhatsApp CDN metadata
+			var localSHA, localSize string
+			if tmpFile != nil {
+				if b, err := os.ReadFile(tmpFile.Name()); err == nil {
+					h := sha256.Sum256(b)
+					localSHA = hex.EncodeToString(h[:])
+					localSize = fmt.Sprintf("%d", len(b))
+				}
+			}
+			ptt := t.AsPTT
+			m := mime
+			if m == "" {
+				m = "audio/mpeg"
+			}
+			// Duração via ffprobe do arquivo final e combinação com origem
+			secondsOut := uint32(0)
+			{
+				probeFile := srcTmp.Name()
+				if tmpFile != nil {
+					probeFile = tmpFile.Name()
+				}
+				// 1) nb_read_frames / sample_rate
+				cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "a:0", "-count_frames", "1", "-show_entries", "stream=nb_read_frames,sample_rate", "-of", "csv=p=0:s=x", probeFile)
+				if out, err := cmd.Output(); err == nil {
+					parts := strings.Split(strings.TrimSpace(string(out)), "x")
+					if len(parts) == 2 {
+						if nf, errN := strconv.ParseFloat(parts[0], 64); errN == nil {
+							if sr, errS := strconv.ParseFloat(parts[1], 64); errS == nil && nf > 0 && sr > 0 {
+								secondsOut = uint32(nf/sr + 0.9999)
+							}
+						}
+					}
+				}
+				// 2) stream=duration
+				if secondsOut == 0 {
+					cmd2 := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=duration", "-of", "default=noprint_wrappers=1:nokey=1", probeFile)
+					if out2, err2 := cmd2.Output(); err2 == nil {
+						if dur, err3 := strconv.ParseFloat(strings.TrimSpace(string(out2)), 64); err3 == nil && dur > 0 {
+							secondsOut = uint32(dur + 0.9999)
+						}
+					}
+				}
+				// 3) format=duration
+				if secondsOut == 0 {
+					cmd3 := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", probeFile)
+					if out3, err3 := cmd3.Output(); err3 == nil {
+						if dur, err4 := strconv.ParseFloat(strings.TrimSpace(string(out3)), 64); err4 == nil && dur > 0 {
+							secondsOut = uint32(dur + 0.9999)
+						}
+					}
+				}
+			}
+			seconds := secondsOut
+			if secondsSrc > seconds {
+				seconds = secondsSrc
+			}
+			if seconds == 0 {
+				if est := estimateSecondsFromPCM(ctx, srcTmp.Name()); est > 0 {
+					seconds = est
+				} else {
+					seconds = 1
+				}
+			}
+
+			// Gera waveform do arquivo FINAL quando houver transcodificação
+			var waveform []byte
+			if tmpFile != nil {
+				_ = tmpFile.Sync()
+				waveform = computeWaveformPCM(ctx, tmpFile.Name())
+				if waveform == nil || len(waveform) == 0 {
+					waveform = computeWaveformPCM(ctx, srcTmp.Name())
+				}
+			} else {
+				waveform = computeWaveformPCM(ctx, srcTmp.Name())
+			}
+
+			msg := &waE2E.Message{AudioMessage: &waE2E.AudioMessage{
+				URL:           proto.String(uploaded.URL),
+				DirectPath:    proto.String(uploaded.DirectPath),
+				MediaKey:      uploaded.MediaKey,
+				Mimetype:      &m,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    proto.Uint64(uploaded.FileLength),
+				PTT:           &ptt,
+				Seconds:       proto.Uint32(seconds),
+				Waveform:      waveform,
+			}}
+
+			// Diagnostics log for audio URL send
+			log.Info().
+				Str("flow", "audio_url").
+				Bool("as_ptt", t.AsPTT).
+				Bool("transcoded", transcoded).
+				Str("mime", m).
+				Uint64("fileLength", uploaded.FileLength).
+				Uint32("seconds", seconds).
+				Int("waveform_len", func() int {
+					if waveform == nil {
+						return 0
+					}
+					return len(waveform)
+				}()).
+				Bool("ptt", ptt).
+				Str("local_sha256", localSHA).
+				Str("local_size", localSize).
+				Msg("Audio diagnostics")
+
+			if t.ContextInfo.StanzaID != nil {
+				msg.AudioMessage.ContextInfo = &waE2E.ContextInfo{
+					StanzaID:      proto.String(*t.ContextInfo.StanzaID),
+					Participant:   proto.String(*t.ContextInfo.Participant),
+					QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
+				}
+			}
+			if t.ContextInfo.MentionedJID != nil {
+				if msg.AudioMessage.ContextInfo == nil {
+					msg.AudioMessage.ContextInfo = &waE2E.ContextInfo{}
+				}
+				msg.AudioMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
+			}
+
+			resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+				return
+			}
+
+			log.Info().Str("timestamp", fmt.Sprintf("%v", resp.Timestamp)).Str("id", msgid).Msg("Message sent")
+			response := map[string]interface{}{"Details": "Sent", "Timestamp": resp.Timestamp.Unix(), "Id": msgid}
+			responseJson, err := json.Marshal(response)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, err)
+			} else {
+				s.Respond(w, r, http.StatusOK, string(responseJson))
+			}
+			return
+		} else if strings.HasPrefix(strings.ToLower(t.Audio), "data:audio/") {
+			// Decode Data URL
+			du, err := dataurl.DecodeString(t.Audio)
 			if err != nil {
 				s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
 				return
-			} else {
-				filedata = dataURL.Data
-				uploaded, err = clientManager.GetWhatsmeowClient(txtid).Upload(context.Background(), filedata, whatsmeow.MediaAudio)
-				if err != nil {
-					s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload file: %v", err)))
-					return
+			}
+			filedata = du.Data
+			// Deriva mime do header do data URL; se ausente, detecta por conteúdo
+			mimeHeader := ""
+			if parts := strings.SplitN(t.Audio, ";", 2); len(parts) > 0 {
+				mh := strings.TrimPrefix(strings.ToLower(parts[0]), "data:")
+				mimeHeader = strings.TrimSpace(mh)
+			}
+			actualMime := mimeHeader
+			if actualMime == "" {
+				actualMime = http.DetectContentType(filedata)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+
+			// Buffer para arquivo origem para medir duração e gerar waveform
+			srcTmp, err := os.CreateTemp("", "audio-src-*.bin")
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to create temp file: %w", err))
+				return
+			}
+			defer func() { srcTmp.Close(); os.Remove(srcTmp.Name()) }()
+			if _, err := srcTmp.Write(filedata); err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to write temp audio: %w", err))
+				return
+			}
+			if _, err := srcTmp.Seek(0, 0); err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to rewind temp: %w", err))
+				return
+			}
+
+			// Calcula duração da origem
+			secondsSrc := uint32(0)
+			{
+				cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "a:0", "-count_frames", "1", "-show_entries", "stream=nb_read_frames,sample_rate", "-of", "csv=p=0:s=x", srcTmp.Name())
+				if out, errN := cmd.Output(); errN == nil {
+					parts := strings.Split(strings.TrimSpace(string(out)), "x")
+					if len(parts) == 2 {
+						if nf, errN := strconv.ParseFloat(parts[0], 64); errN == nil {
+							if sr, errS := strconv.ParseFloat(parts[1], 64); errS == nil && nf > 0 && sr > 0 {
+								secondsSrc = uint32(nf/sr + 0.9999)
+							}
+						}
+					}
+				}
+				if secondsSrc == 0 {
+					cmd2 := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=duration", "-of", "default=noprint_wrappers=1:nokey=1", srcTmp.Name())
+					if out2, err2 := cmd2.Output(); err2 == nil {
+						if dur, err3 := strconv.ParseFloat(strings.TrimSpace(string(out2)), 64); err3 == nil && dur > 0 {
+							secondsSrc = uint32(dur + 0.9999)
+						}
+					}
+				}
+				if secondsSrc == 0 {
+					cmd3 := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", srcTmp.Name())
+					if out3, err3 := cmd3.Output(); err3 == nil {
+						if dur, err4 := strconv.ParseFloat(strings.TrimSpace(string(out3)), 64); err4 == nil && dur > 0 {
+							secondsSrc = uint32(dur + 0.9999)
+						}
+					}
 				}
 			}
+
+			// Decide transcodificação
+			var reader io.Reader
+			var tmpFile *os.File
+			transcoded := false
+			m := actualMime
+			if m == "" {
+				m = "audio/mpeg"
+			}
+			if t.AsPTT && !strings.Contains(strings.ToLower(m), "audio/ogg") {
+				outTmp, err := os.CreateTemp("", "audio-ptt-*.ogg")
+				if err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to create output temp file: %w", err))
+					return
+				}
+				defer func() { outTmp.Close(); os.Remove(outTmp.Name()) }()
+				// PTT preferencial: opus 16kHz mono ~32kbps; força contêiner ogg
+				cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", srcTmp.Name(), "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:a", "32k", "-vbr", "on", "-compression_level", "10", "-application", "voip", "-f", "ogg", outTmp.Name())
+				if out, err := cmd.CombinedOutput(); err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("ffmpeg transcode error: %v - %s", err, string(out)))
+					return
+				}
+				if _, err := outTmp.Seek(0, 0); err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to rewind transcoded file: %w", err))
+					return
+				}
+				// Remux para garantir contêiner OGG canônico
+				remuxTmp, err := os.CreateTemp("", "audio-ptt-remux-*.ogg")
+				if err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to create remux temp file: %w", err))
+					return
+				}
+				defer func() { remuxTmp.Close(); os.Remove(remuxTmp.Name()) }()
+				remuxCmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", outTmp.Name(), "-c", "copy", "-f", "ogg", remuxTmp.Name())
+				if out, err := remuxCmd.CombinedOutput(); err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("ffmpeg remux error: %v - %s", err, string(out)))
+					return
+				}
+				if _, err := remuxTmp.Seek(0, 0); err != nil {
+					s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to rewind remuxed file: %w", err))
+					return
+				}
+				reader = remuxTmp
+				tmpFile = remuxTmp
+				m = "audio/ogg; codecs=opus"
+				transcoded = true
+			} else {
+				// Quando não é PTT: se vier WEBM/VIDEO/OGG/OPUS, transcodifica para AAC/M4A (compat c/ iOS/Web)
+				lowMime := strings.ToLower(m)
+				if !t.AsPTT && (strings.Contains(lowMime, "webm") || strings.HasPrefix(lowMime, "video/") || strings.Contains(lowMime, "ogg") || strings.Contains(lowMime, "opus")) {
+					outTmp, err := os.CreateTemp("", "audio-aac-*.m4a")
+					if err != nil {
+						s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to create output temp file: %w", err))
+						return
+					}
+					defer func() { outTmp.Close(); os.Remove(outTmp.Name()) }()
+					// AAC 44.1kHz estéreo 128kbps, compatível com iOS
+					cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", srcTmp.Name(), "-ac", "2", "-ar", "44100", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", "-f", "mp4", outTmp.Name())
+					if out, err := cmd.CombinedOutput(); err != nil {
+						s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("ffmpeg transcode (aac) error: %v - %s", err, string(out)))
+						return
+					}
+					if _, err := outTmp.Seek(0, 0); err != nil {
+						s.Respond(w, r, http.StatusInternalServerError, fmt.Errorf("failed to rewind aac file: %w", err))
+						return
+					}
+					reader = outTmp
+					tmpFile = outTmp
+					m = "audio/mp4"
+					transcoded = true
+				} else {
+					reader = srcTmp
+					tmpFile = srcTmp
+				}
+			}
+
+			uploaded, err = clientManager.GetWhatsmeowClient(txtid).UploadReader(ctx, reader, tmpFile, whatsmeow.MediaAudio)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload audio from base64: %v", err)))
+				return
+			}
+
+			// Diagnostics: compute local file hash/size to compare with WhatsApp CDN metadata
+			var localSHA, localSize string
+			if tmpFile != nil {
+				if b, err := os.ReadFile(tmpFile.Name()); err == nil {
+					h := sha256.Sum256(b)
+					localSHA = hex.EncodeToString(h[:])
+					localSize = fmt.Sprintf("%d", len(b))
+				}
+			}
+
+			ptt := t.AsPTT
+
+			// duração final
+			secondsOut := uint32(0)
+			{
+				probeFile := srcTmp.Name()
+				if tmpFile != nil {
+					probeFile = tmpFile.Name()
+				}
+				cmd := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "a:0", "-count_frames", "1", "-show_entries", "stream=nb_read_frames,sample_rate", "-of", "csv=p=0:s=x", probeFile)
+				if out, err := cmd.Output(); err == nil {
+					parts := strings.Split(strings.TrimSpace(string(out)), "x")
+					if len(parts) == 2 {
+						if nf, errN := strconv.ParseFloat(parts[0], 64); errN == nil {
+							if sr, errS := strconv.ParseFloat(parts[1], 64); errS == nil && nf > 0 && sr > 0 {
+								secondsOut = uint32(nf/sr + 0.9999)
+							}
+						}
+					}
+				}
+				if secondsOut == 0 {
+					cmd2 := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=duration", "-of", "default=noprint_wrappers=1:nokey=1", probeFile)
+					if out2, err2 := cmd2.Output(); err2 == nil {
+						if dur, err3 := strconv.ParseFloat(strings.TrimSpace(string(out2)), 64); err3 == nil && dur > 0 {
+							secondsOut = uint32(dur + 0.9999)
+						}
+					}
+				}
+				if secondsOut == 0 {
+					cmd3 := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", probeFile)
+					if out3, err3 := cmd3.Output(); err3 == nil {
+						if dur, err4 := strconv.ParseFloat(strings.TrimSpace(string(out3)), 64); err4 == nil && dur > 0 {
+							secondsOut = uint32(dur + 0.9999)
+						}
+					}
+				}
+			}
+			seconds := secondsOut
+			if secondsSrc > seconds {
+				seconds = secondsSrc
+			}
+			if seconds == 0 {
+				if est := estimateSecondsFromPCM(ctx, srcTmp.Name()); est > 0 {
+					seconds = est
+				} else {
+					seconds = 1
+				}
+			}
+
+			// waveform: preferir arquivo final se houve transcodificação
+			var waveform []byte
+			if tmpFile != nil {
+				_ = tmpFile.Sync()
+				waveform = computeWaveformPCM(ctx, tmpFile.Name())
+				if waveform == nil || len(waveform) == 0 {
+					waveform = computeWaveformPCM(ctx, srcTmp.Name())
+				}
+			} else {
+				waveform = computeWaveformPCM(ctx, srcTmp.Name())
+			}
+
+			msg := &waE2E.Message{AudioMessage: &waE2E.AudioMessage{
+				URL:           proto.String(uploaded.URL),
+				DirectPath:    proto.String(uploaded.DirectPath),
+				MediaKey:      uploaded.MediaKey,
+				Mimetype:      &m,
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    proto.Uint64(uploaded.FileLength),
+				PTT:           &ptt,
+				Seconds:       proto.Uint32(seconds),
+				Waveform:      waveform,
+			}}
+
+			log.Info().
+				Str("flow", "audio_base64").
+				Bool("as_ptt", t.AsPTT).
+				Bool("transcoded", transcoded).
+				Str("mime", m).
+				Uint64("fileLength", uploaded.FileLength).
+				Uint32("seconds", seconds).
+				Int("waveform_len", func() int {
+					if waveform == nil {
+						return 0
+					}
+					return len(waveform)
+				}()).
+				Bool("ptt", ptt).
+				Str("local_sha256", localSHA).
+				Str("local_size", localSize).
+				Msg("Audio diagnostics")
+
+			if t.ContextInfo.StanzaID != nil {
+				msg.AudioMessage.ContextInfo = &waE2E.ContextInfo{
+					StanzaID:      proto.String(*t.ContextInfo.StanzaID),
+					Participant:   proto.String(*t.ContextInfo.Participant),
+					QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
+				}
+			}
+			if t.ContextInfo.MentionedJID != nil {
+				if msg.AudioMessage.ContextInfo == nil {
+					msg.AudioMessage.ContextInfo = &waE2E.ContextInfo{}
+				}
+				msg.AudioMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
+			}
+
+			resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+				return
+			}
+
+			log.Info().Str("timestamp", fmt.Sprintf("%v", resp.Timestamp)).Str("id", msgid).Msg("Message sent")
+			response := map[string]interface{}{"Details": "Sent", "Timestamp": resp.Timestamp.Unix(), "Id": msgid}
+			responseJson, err := json.Marshal(response)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, err)
+			} else {
+				s.Respond(w, r, http.StatusOK, string(responseJson))
+			}
+			return
 		} else {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("audio data should start with \"data:audio/ogg;base64,\""))
+			s.Respond(w, r, http.StatusBadRequest, errors.New("audio data should start with \"data:audio/...;base64,\""))
 			return
 		}
-
-		ptt := true
-		mime := "audio/ogg; codecs=opus"
-
-		msg := &waE2E.Message{AudioMessage: &waE2E.AudioMessage{
-			URL:        proto.String(uploaded.URL),
-			DirectPath: proto.String(uploaded.DirectPath),
-			MediaKey:   uploaded.MediaKey,
-			//Mimetype:      proto.String(http.DetectContentType(filedata)),
-			Mimetype:      &mime,
-			FileEncSHA256: uploaded.FileEncSHA256,
-			FileSHA256:    uploaded.FileSHA256,
-			FileLength:    proto.Uint64(uint64(len(filedata))),
-			PTT:           &ptt,
-		}}
-
-		if t.ContextInfo.StanzaID != nil {
-			msg.ExtendedTextMessage.ContextInfo = &waE2E.ContextInfo{
-				StanzaID:      proto.String(*t.ContextInfo.StanzaID),
-				Participant:   proto.String(*t.ContextInfo.Participant),
-				QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
-			}
-		}
-		if t.ContextInfo.MentionedJID != nil {
-			if msg.ExtendedTextMessage.ContextInfo == nil {
-				msg.ExtendedTextMessage.ContextInfo = &waE2E.ContextInfo{}
-			}
-			msg.ExtendedTextMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
-		}
-
-		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
-		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
-			return
-		}
-
-		log.Info().Str("timestamp", fmt.Sprintf("%v", resp.Timestamp)).Str("id", msgid).Msg("Message sent")
-		response := map[string]interface{}{"Details": "Sent", "Timestamp": resp.Timestamp.Unix(), "Id": msgid}
-		responseJson, err := json.Marshal(response)
-		if err != nil {
-			s.Respond(w, r, http.StatusInternalServerError, err)
-		} else {
-			s.Respond(w, r, http.StatusOK, string(responseJson))
-		}
-		return
 	}
 }
 
@@ -1663,6 +2768,7 @@ func (s *server) SendImage() http.HandlerFunc {
 	type imageStruct struct {
 		Phone       string
 		Image       string
+		ImageUrl    string
 		Caption     string
 		Id          string
 		MimeType    string
@@ -1693,12 +2799,12 @@ func (s *server) SendImage() http.HandlerFunc {
 			return
 		}
 
-		if t.Image == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Image in Payload"))
+		if t.Image == "" && t.ImageUrl == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Image or ImageUrl in Payload"))
 			return
 		}
 
-		recipient, err := validateMessageFields(t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
+		recipient, err := validateMessageFieldsSmart(txtid, t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
 		if err != nil {
 			log.Error().Msg(fmt.Sprintf("%s", err))
 			s.Respond(w, r, http.StatusBadRequest, err)
@@ -1715,7 +2821,82 @@ func (s *server) SendImage() http.HandlerFunc {
 		var filedata []byte
 		var thumbnailBytes []byte
 
-		if t.Image[0:10] == "data:image" {
+		if t.ImageUrl != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.ImageUrl, nil)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadRequest, errors.New("invalid ImageUrl"))
+				return
+			}
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadGateway, errors.New(fmt.Sprintf("failed to fetch ImageUrl: %v", err)))
+				return
+			}
+			defer res.Body.Close()
+			if res.StatusCode < 200 || res.StatusCode >= 300 {
+				s.Respond(w, r, http.StatusBadGateway, errors.New(fmt.Sprintf("ImageUrl responded with status %d", res.StatusCode)))
+				return
+			}
+			uploaded, err = clientManager.GetWhatsmeowClient(txtid).UploadReader(ctx, res.Body, nil, whatsmeow.MediaImage)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload image from URL: %v", err)))
+				return
+			}
+			// MIME
+			mime := res.Header.Get("Content-Type")
+			msg := &waE2E.Message{ImageMessage: &waE2E.ImageMessage{
+				Caption:    proto.String(t.Caption),
+				URL:        proto.String(uploaded.URL),
+				DirectPath: proto.String(uploaded.DirectPath),
+				MediaKey:   uploaded.MediaKey,
+				Mimetype: func() *string {
+					if t.MimeType != "" {
+						return &t.MimeType
+					}
+					if mime != "" {
+						return &mime
+					}
+					v := "image/jpeg"
+					return &v
+				}(),
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    proto.Uint64(uploaded.FileLength),
+				JPEGThumbnail: thumbnailBytes,
+			}}
+
+			if t.ContextInfo.StanzaID != nil {
+				if msg.ImageMessage.ContextInfo == nil {
+					msg.ImageMessage.ContextInfo = &waE2E.ContextInfo{
+						StanzaID:      proto.String(*t.ContextInfo.StanzaID),
+						Participant:   proto.String(*t.ContextInfo.Participant),
+						QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
+					}
+				}
+			}
+
+			if t.ContextInfo.MentionedJID != nil {
+				msg.ImageMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
+			}
+
+			resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("Error sending message: %v", err)))
+				return
+			}
+
+			log.Info().Str("timestamp", fmt.Sprintf("%v", resp.Timestamp)).Str("id", msgid).Msg("Message sent")
+			response := map[string]interface{}{"Details": "Sent", "Timestamp": resp.Timestamp.Unix(), "Id": msgid}
+			responseJson, err := json.Marshal(response)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, err)
+			} else {
+				s.Respond(w, r, http.StatusOK, string(responseJson))
+			}
+			return
+		} else if t.Image[0:10] == "data:image" {
 			var dataURL, err = dataurl.DecodeString(t.Image)
 			if err != nil {
 				s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
@@ -1854,7 +3035,7 @@ func (s *server) SendSticker() http.HandlerFunc {
 			return
 		}
 
-		recipient, err := validateMessageFields(t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
+		recipient, err := validateMessageFieldsSmart(txtid, t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
 		if err != nil {
 			log.Error().Msg(fmt.Sprintf("%s", err))
 			s.Respond(w, r, http.StatusBadRequest, err)
@@ -1942,6 +3123,7 @@ func (s *server) SendVideo() http.HandlerFunc {
 	type imageStruct struct {
 		Phone         string
 		Video         string
+		VideoUrl      string
 		Caption       string
 		Id            string
 		JPEGThumbnail []byte
@@ -1973,12 +3155,12 @@ func (s *server) SendVideo() http.HandlerFunc {
 			return
 		}
 
-		if t.Video == "" {
-			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Video in Payload"))
+		if t.Video == "" && t.VideoUrl == "" {
+			s.Respond(w, r, http.StatusBadRequest, errors.New("missing Video or VideoUrl in Payload"))
 			return
 		}
 
-		recipient, err := validateMessageFields(t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
+		recipient, err := validateMessageFieldsSmart(txtid, t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
 		if err != nil {
 			log.Error().Msg(fmt.Sprintf("%s", err))
 			s.Respond(w, r, http.StatusBadRequest, err)
@@ -1994,7 +3176,81 @@ func (s *server) SendVideo() http.HandlerFunc {
 		var uploaded whatsmeow.UploadResponse
 		var filedata []byte
 
-		if t.Video[0:4] == "data" {
+		if t.VideoUrl != "" {
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.VideoUrl, nil)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadRequest, errors.New("invalid VideoUrl"))
+				return
+			}
+			res, err := http.DefaultClient.Do(req)
+			if err != nil {
+				s.Respond(w, r, http.StatusBadGateway, errors.New(fmt.Sprintf("failed to fetch VideoUrl: %v", err)))
+				return
+			}
+			defer res.Body.Close()
+			if res.StatusCode < 200 || res.StatusCode >= 300 {
+				s.Respond(w, r, http.StatusBadGateway, errors.New(fmt.Sprintf("VideoUrl responded with status %d", res.StatusCode)))
+				return
+			}
+			uploaded, err = clientManager.GetWhatsmeowClient(txtid).UploadReader(ctx, res.Body, nil, whatsmeow.MediaVideo)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("failed to upload video from URL: %v", err)))
+				return
+			}
+			mime := res.Header.Get("Content-Type")
+			msg := &waE2E.Message{VideoMessage: &waE2E.VideoMessage{
+				Caption:    proto.String(t.Caption),
+				URL:        proto.String(uploaded.URL),
+				DirectPath: proto.String(uploaded.DirectPath),
+				MediaKey:   uploaded.MediaKey,
+				Mimetype: func() *string {
+					if t.MimeType != "" {
+						return &t.MimeType
+					}
+					if mime != "" {
+						return &mime
+					}
+					v := "video/mp4"
+					return &v
+				}(),
+				FileEncSHA256: uploaded.FileEncSHA256,
+				FileSHA256:    uploaded.FileSHA256,
+				FileLength:    proto.Uint64(uploaded.FileLength),
+				JPEGThumbnail: t.JPEGThumbnail,
+			}}
+
+			if t.ContextInfo.StanzaID != nil {
+				msg.VideoMessage.ContextInfo = &waE2E.ContextInfo{
+					StanzaID:      proto.String(*t.ContextInfo.StanzaID),
+					Participant:   proto.String(*t.ContextInfo.Participant),
+					QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
+				}
+			}
+			if t.ContextInfo.MentionedJID != nil {
+				if msg.VideoMessage.ContextInfo == nil {
+					msg.VideoMessage.ContextInfo = &waE2E.ContextInfo{}
+				}
+				msg.VideoMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
+			}
+
+			resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, errors.New(fmt.Sprintf("error sending message: %v", err)))
+				return
+			}
+
+			log.Info().Str("timestamp", fmt.Sprintf("%v", resp.Timestamp)).Str("id", msgid).Msg("Message sent")
+			response := map[string]interface{}{"Details": "Sent", "Timestamp": resp.Timestamp.Unix(), "Id": msgid}
+			responseJson, err := json.Marshal(response)
+			if err != nil {
+				s.Respond(w, r, http.StatusInternalServerError, err)
+			} else {
+				s.Respond(w, r, http.StatusOK, string(responseJson))
+			}
+			return
+		} else if t.Video[0:4] == "data" {
 			var dataURL, err = dataurl.DecodeString(t.Video)
 			if err != nil {
 				s.Respond(w, r, http.StatusBadRequest, errors.New("could not decode base64 encoded data from payload"))
@@ -2030,17 +3286,17 @@ func (s *server) SendVideo() http.HandlerFunc {
 		}}
 
 		if t.ContextInfo.StanzaID != nil {
-			msg.ExtendedTextMessage.ContextInfo = &waE2E.ContextInfo{
+			msg.VideoMessage.ContextInfo = &waE2E.ContextInfo{
 				StanzaID:      proto.String(*t.ContextInfo.StanzaID),
 				Participant:   proto.String(*t.ContextInfo.Participant),
 				QuotedMessage: &waE2E.Message{Conversation: proto.String("")},
 			}
 		}
 		if t.ContextInfo.MentionedJID != nil {
-			if msg.ExtendedTextMessage.ContextInfo == nil {
-				msg.ExtendedTextMessage.ContextInfo = &waE2E.ContextInfo{}
+			if msg.VideoMessage.ContextInfo == nil {
+				msg.VideoMessage.ContextInfo = &waE2E.ContextInfo{}
 			}
-			msg.ExtendedTextMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
+			msg.VideoMessage.ContextInfo.MentionedJID = t.ContextInfo.MentionedJID
 		}
 
 		resp, err = clientManager.GetWhatsmeowClient(txtid).SendMessage(context.Background(), recipient, msg, whatsmeow.SendRequestExtra{ID: msgid})
@@ -2104,7 +3360,7 @@ func (s *server) SendContact() http.HandlerFunc {
 			return
 		}
 
-		recipient, err := validateMessageFields(t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
+		recipient, err := validateMessageFieldsSmart(txtid, t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
 		if err != nil {
 			log.Error().Msg(fmt.Sprintf("%s", err))
 			s.Respond(w, r, http.StatusBadRequest, err)
@@ -2198,7 +3454,7 @@ func (s *server) SendLocation() http.HandlerFunc {
 			return
 		}
 
-		recipient, err := validateMessageFields(t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
+		recipient, err := validateMessageFieldsSmart(txtid, t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
 		if err != nil {
 			log.Error().Msg(fmt.Sprintf("%s", err))
 			s.Respond(w, r, http.StatusBadRequest, err)
@@ -2542,7 +3798,7 @@ func (s *server) SendMessage() http.HandlerFunc {
 			return
 		}
 
-		recipient, err := validateMessageFields(t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
+		recipient, err := validateMessageFieldsSmart(txtid, t.Phone, t.ContextInfo.StanzaID, t.ContextInfo.Participant)
 		if err != nil {
 			log.Error().Msg(fmt.Sprintf("%s", err))
 			s.Respond(w, r, http.StatusBadRequest, err)
@@ -2582,6 +3838,15 @@ func (s *server) SendMessage() http.HandlerFunc {
 		}
 
 		log.Info().Str("timestamp", fmt.Sprintf("%v", resp.Timestamp)).Str("id", msgid).Msg("Message sent")
+
+		// Save sent message to chat database
+		go func() {
+			err := saveSentMessageToChat(s.db, txtid, recipient.String(), msgid, t.Body, resp.Timestamp)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to save sent message to chat")
+			}
+		}()
+
 		response := map[string]interface{}{"Details": "Sent", "Timestamp": resp.Timestamp.Unix(), "Id": msgid}
 		responseJson, err := json.Marshal(response)
 		if err != nil {
@@ -2812,7 +4077,7 @@ func (s *server) SendEditMessage() http.HandlerFunc {
 			return
 		}
 
-		log.Info().Str("timestamp", fmt.Sprintf("%d", resp.Timestamp)).Str("id", msgid).Msg("Message edit sent")
+		log.Info().Str("timestamp", fmt.Sprintf("%v", resp.Timestamp)).Str("id", msgid).Msg("Message edit sent")
 		response := map[string]interface{}{"Details": "Sent", "Timestamp": resp.Timestamp.Unix(), "Id": msgid}
 		responseJson, err := json.Marshal(response)
 		if err != nil {
@@ -5521,6 +6786,61 @@ func validateMessageFields(phone string, stanzaid *string, participant *string) 
 	return recipient, nil
 }
 
+// Validate message fields with BR smart dial using client context
+func validateMessageFieldsSmart(txtid string, phone string, stanzaid *string, participant *string) (types.JID, error) {
+	// Try BR smart resolution first
+	resolved := phone
+	var chosenJID *types.JID
+	if !strings.ContainsRune(phone, '@') {
+		cleaned := strings.TrimSpace(phone)
+		if strings.HasPrefix(cleaned, "+") {
+			cleaned = cleaned[1:]
+		}
+		cleaned = strings.Map(func(r rune) rune {
+			if r >= '0' && r <= '9' {
+				return r
+			}
+			return -1
+		}, cleaned)
+		if strings.HasPrefix(cleaned, "55") && len(cleaned) >= 12 && clientManager.GetWhatsmeowClient(txtid) != nil {
+			ddd := cleaned[2:4]
+			rest := cleaned[4:]
+			candidates := []string{}
+			// add variant with 9
+			if len(rest) == 8 || (len(rest) > 0 && rest[0] != '9') {
+				candidates = append(candidates, "+55"+ddd+"9"+rest)
+			}
+			// add variant without 9
+			if len(rest) >= 9 && rest[0] == '9' {
+				candidates = append(candidates, "+55"+ddd+rest[1:])
+			}
+			// original
+			candidates = append(candidates, "+"+cleaned)
+			if res, err := clientManager.GetWhatsmeowClient(txtid).IsOnWhatsApp(candidates); err == nil {
+				for i, r := range res {
+					if r.IsIn {
+						resolved = candidates[i]
+						jid := r.JID.ToNonAD()
+						chosenJID = &jid
+						break
+					}
+				}
+			}
+		}
+	}
+	// Se já recebemos o JID canônico do WhatsApp, aplicamos apenas as validações de contexto
+	if chosenJID != nil {
+		if stanzaid != nil && participant == nil {
+			return types.NewJID("", types.DefaultUserServer), errors.New("missing Participant in ContextInfo")
+		}
+		if participant != nil && stanzaid == nil {
+			return types.NewJID("", types.DefaultUserServer), errors.New("missing StanzaID in ContextInfo")
+		}
+		return *chosenJID, nil
+	}
+	return validateMessageFields(resolved, stanzaid, participant)
+}
+
 // Set proxy
 func (s *server) SetProxy() http.HandlerFunc {
 	type proxyStruct struct {
@@ -5863,4 +7183,150 @@ func (s *server) DeleteS3Config() http.HandlerFunc {
 			s.Respond(w, r, http.StatusOK, string(responseJson))
 		}
 	}
+}
+
+// computeWaveformPCM generates a 64-byte waveform from an audio file by converting it to
+// mono PCM (16 kHz, s16le) using ffmpeg and then computing peak amplitudes per window.
+// Returns nil on failure.
+func computeWaveformPCM(ctx context.Context, filePath string) []byte {
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-i", filePath, "-ac", "1", "-ar", "16000", "-f", "s16le", "-")
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		log.Error().
+			Str("stage", "waveform_ffmpeg").
+			Str("file", filePath).
+			Int("out_len", outBuf.Len()).
+			Msgf("ffmpeg failed: %v | stderr: %s", err, truncateString(errBuf.String(), 400))
+		return nil
+	}
+	pcm := outBuf.Bytes()
+	if len(pcm) < 2 {
+		if errBuf.Len() > 0 {
+			log.Error().
+				Str("stage", "waveform_no_output").
+				Str("file", filePath).
+				Int("out_len", outBuf.Len()).
+				Msgf("ffmpeg stderr: %s", truncateString(errBuf.String(), 400))
+		}
+		return nil
+	}
+	totalSamples := len(pcm) / 2
+	if totalSamples <= 0 {
+		return nil
+	}
+	window := 320 // ~20ms @16kHz
+	numWindows := totalSamples / window
+	if numWindows <= 0 {
+		return nil
+	}
+	peaks := make([]int, numWindows)
+	idx := 0
+	for w := 0; w < numWindows; w++ {
+		peak := 0
+		for s := 0; s < window; s++ {
+			if idx+1 >= len(pcm) {
+				break
+			}
+			v := int(int16(int(pcm[idx]) | (int(pcm[idx+1]) << 8)))
+			if v < 0 {
+				v = -v
+			}
+			if v > peak {
+				peak = v
+			}
+			idx += 2
+		}
+		if peak > 32767 {
+			peak = 32767
+		}
+		peaks[w] = peak
+	}
+	// normalização dinâmica baseada no pico máximo do arquivo
+	trackMax := 0
+	for i := 0; i < len(peaks); i++ {
+		if peaks[i] > trackMax {
+			trackMax = peaks[i]
+		}
+	}
+	if trackMax <= 0 {
+		return nil
+	}
+	bands := 64
+	waveform := make([]byte, bands)
+	if numWindows < bands {
+		for i := 0; i < bands; i++ {
+			src := (i * numWindows) / bands
+			val := (peaks[src] * 31) / trackMax
+			if val < 0 {
+				val = 0
+			}
+			if val > 31 {
+				val = 31
+			}
+			if val == 0 && peaks[src] > 0 {
+				val = 1
+			}
+			waveform[i] = byte(val)
+		}
+		return waveform
+	}
+	step := float64(numWindows) / float64(bands)
+	for i := 0; i < bands; i++ {
+		start := int(float64(i) * step)
+		end := int(float64(i+1) * step)
+		if end <= start {
+			end = start + 1
+		}
+		if end > len(peaks) {
+			end = len(peaks)
+		}
+		maxv := 0
+		for j := start; j < end; j++ {
+			if peaks[j] > maxv {
+				maxv = peaks[j]
+			}
+		}
+		val := (maxv * 31) / trackMax
+		if val < 0 {
+			val = 0
+		}
+		if val > 31 {
+			val = 31
+		}
+		if val == 0 && maxv > 0 {
+			val = 1
+		}
+		waveform[i] = byte(val)
+	}
+	return waveform
+}
+
+// estimateSecondsFromPCM estima a duração gerando PCM 16kHz mono e calculando pelo tamanho do buffer
+func estimateSecondsFromPCM(ctx context.Context, filePath string) uint32 {
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-i", filePath, "-ac", "1", "-ar", "16000", "-f", "s16le", "-")
+	var outBuf, errBuf bytes.Buffer
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		return 0
+	}
+	samples := outBuf.Len() / 2 // s16le: 2 bytes por amostra
+	if samples <= 0 {
+		return 0
+	}
+	secs := uint32((float64(samples) / 16000.0) + 0.5)
+	if secs == 0 {
+		secs = 1
+	}
+	return secs
+}
+
+// truncateString limita logs longos no stderr do ffmpeg
+func truncateString(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max]
 }

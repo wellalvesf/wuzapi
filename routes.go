@@ -85,6 +85,20 @@ func (s *server) routes() {
 	s.router.Handle("/integration/ghl/status", c.Then(s.GHLStatus())).Methods("GET")
 	s.router.Handle("/integration/ghl/disconnect", c.Then(s.GHLDisconnect())).Methods("POST")
 	s.router.Handle("/integration/ghl/settings", c.Then(s.GHLUpdateSettings())).Methods("POST")
+
+	// Stevo Voice Integration
+	s.router.Handle("/integration/voice/create", c.Then(s.VoiceCreate())).Methods("POST")
+	s.router.Handle("/integration/voice/refresh", c.Then(s.VoiceRefreshQR())).Methods("POST")
+	s.router.Handle("/integration/voice/status", c.Then(s.VoiceStatus())).Methods("GET")
+	s.router.Handle("/integration/voice/delete", c.Then(s.VoiceDelete())).Methods("POST")
+	s.router.Handle("/integration/voice/info", c.Then(s.VoiceInfo())).Methods("GET")
+
+	// Voice AI (OpenAI / ElevenLabs) Integration
+	s.router.Handle("/integration/voiceai/info", c.Then(s.VoiceAIInfo())).Methods("GET")
+	s.router.Handle("/integration/voiceai/save", c.Then(s.VoiceAISave())).Methods("POST", "OPTIONS")
+	s.router.Handle("/integration/voiceai/voices", c.Then(s.VoiceAIVoices())).Methods("POST", "OPTIONS")
+	// Alias nas rotas de GHL (proxy já permitido em prod)
+	s.router.Handle("/integration/ghl/voices", c.Then(s.VoiceAIVoices())).Methods("POST", "OPTIONS")
 	s.router.Handle("/session/qr", c.Then(s.GetQR())).Methods("GET")
 	s.router.Handle("/session/pairphone", c.Then(s.PairPhone())).Methods("POST")
 	s.router.Handle("/session/history", c.Then(s.RequestHistorySync())).Methods("GET")
@@ -113,9 +127,16 @@ func (s *server) routes() {
 	s.router.Handle("/chat/send/contact", c.Then(s.SendContact())).Methods("POST")
 	s.router.Handle("/chat/react", c.Then(s.React())).Methods("POST")
 	s.router.Handle("/chat/send/buttons", c.Then(s.SendButtons())).Methods("POST")
+	s.router.Handle("/chat/send/interactive", c.Then(s.SendInteractive())).Methods("POST")
 	s.router.Handle("/chat/send/list", c.Then(s.SendList())).Methods("POST")
 	s.router.Handle("/chat/send/poll", c.Then(s.SendPoll())).Methods("POST")
 	s.router.Handle("/chat/send/edit", c.Then(s.SendEditMessage())).Methods("POST")
+
+	// Chat Integration Endpoints
+	s.router.Handle("/chat/conversations", c.Then(s.GetChatConversations())).Methods("GET")
+	s.router.Handle("/chat/messages/{contact}", c.Then(s.GetChatMessages())).Methods("GET")
+	s.router.Handle("/chat/profile/update", c.Then(s.UpdateChatProfile())).Methods("POST")
+	s.router.Handle("/chat/stream", c.Then(s.ChatWebSocket())).Methods("GET")
 
 	s.router.Handle("/user/presence", c.Then(s.SendPresence())).Methods("POST")
 	s.router.Handle("/user/info", c.Then(s.GetUser())).Methods("POST")
@@ -158,5 +179,14 @@ func (s *server) routes() {
 	s.router.Handle("/labels/chat", c.Then(s.LabelChat())).Methods("POST")
 	s.router.Handle("/labels/message", c.Then(s.LabelMessage())).Methods("POST")
 
+	// Redirect root to stevo.chat (hide local landing page)
+	s.router.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://stevo.chat", http.StatusMovedPermanently)
+	}).Methods("GET", "HEAD")
+	s.router.HandleFunc("/index.html", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://stevo.chat", http.StatusMovedPermanently)
+	}).Methods("GET", "HEAD")
+
+	// Keep other static assets (e.g., /dashboard, /api) available
 	s.router.PathPrefix("/").Handler(http.FileServer(http.Dir(exPath + "/static/")))
 }

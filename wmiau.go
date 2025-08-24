@@ -625,6 +625,9 @@ func (mycli *MyClient) myEventHandler(rawEvt interface{}) {
 			return
 		}
 
+		// Process message for chat integration
+		go processChatMessageEvent(mycli.db, mycli.userID, mycli.WAClient, evt)
+
 		var s3Config struct {
 			Enabled       string `db:"s3_enabled"`
 			MediaDelivery string `db:"media_delivery"`

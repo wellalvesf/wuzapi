@@ -6,6 +6,35 @@ let updateInterval = 5000;
 let instanceToDelete = null;
 let isAdminLogin = false;
 let currentInstanceData = null;
+let instancesCache = [];
+
+// Clipboard helper com fallback para ambientes embutidos (iframe) e contextos inseguros
+async function copyToClipboard(text) {
+  try {
+    if (window.isSecureContext && navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(String(text || ''));
+      return true;
+    }
+  } catch (err) {
+    // continuará para fallback
+  }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = String(text || '');
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.left = '-1000px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    if (ok) return true;
+  } catch (_) { /* noop */ }
+  return false;
+}
 
 document.addEventListener('DOMContentLoaded', function() {
 
@@ -55,6 +84,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize S3 media delivery dropdown (if present)
   if ($('#s3MediaDelivery').length) { $('#s3MediaDelivery').dropdown(); }
   if ($('#addInstanceS3MediaDelivery').length) { $('#addInstanceS3MediaDelivery').dropdown(); }
+
+  // Initialize table filters dropdowns (instances list)
+  if ($('#filterConnected').length) { try { $('#filterConnected').dropdown(); } catch (_) {} }
+  if ($('#filterLoggedIn').length) { try { $('#filterLoggedIn').dropdown(); } catch (_) {} }
 
   // Initialize proxy enabled checkbox with onChange handler
   $('#proxyEnabledToggle').checkbox({
@@ -284,6 +317,8 @@ document.addEventListener('DOMContentLoaded', function() {
             // hidrata estado inicial
             // nada a hidratar por enquanto (somente outros toggles visuais)
             refreshGHLStatus();
+            // Hidratar Voice IA ao abrir o modal
+            try { hydrateVoiceAI(); } catch(_){}
           },
           onApprove: function(){ return false; }
         })
@@ -296,22 +331,60 @@ document.addEventListener('DOMContentLoaded', function() {
   if (ghlSave) {
     ghlSave.addEventListener('click', async function(){
       const token = getLocalStorageItem('token');
+      if (ghlSave) ghlSave.classList.add('loading','disabled');
       const sendOrigin = document.getElementById('ghl-toggle-send-origin')?.querySelector('input')?.checked || document.getElementById('ghl-toggle-send-origin')?.checked;
       const userInConv = document.getElementById('ghl-toggle-agent-tag')?.querySelector('input')?.checked || document.getElementById('ghl-toggle-agent-tag')?.checked;
       const phoneRaw = (document.getElementById('ghl-disconnect-phone')?.value || '').trim();
       const phone = phoneRaw.replace(/[^0-9]/g, '').replace(/^\+/, '');
       const alertOn = document.getElementById('ghl-toggle-disconnect-alert')?.querySelector('input')?.checked || document.getElementById('ghl-toggle-disconnect-alert')?.checked;
+      // Trigger tab
+      const triggerEnabled = document.getElementById('ghl-trigger-enabled')?.checked || false;
+      const trigger1 = (document.getElementById('ghl-trigger-1')?.value || '').trim();
+      const trigger2 = (document.getElementById('ghl-trigger-2')?.value || '').trim();
+      const trigger3 = (document.getElementById('ghl-trigger-3')?.value || '').trim();
+      const trigger4 = (document.getElementById('ghl-trigger-4')?.value || '').trim();
+      const trigger5 = (document.getElementById('ghl-trigger-5')?.value || '').trim();
       try {
-        await fetch('/integration/ghl/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'token': token },
-          body: JSON.stringify({ env_source: !!sendOrigin, user_in_conv: !!userInConv, disconnect_alert_phone: phone, disconnect_alert: !!alertOn })
-        });
+        // Voice IA payload (salvar junto com o restante)
+        const openaiKey = (document.getElementById('openaiKeyInput')?.value || '').trim();
+        const openaiVoice = (document.getElementById('openaiVoiceValue')?.value || '').trim();
+        const elevenKey = (document.getElementById('elevenKeyInput')?.value || '').trim();
+        const elevenVoice = (document.getElementById('elevenVoiceValue')?.value || '').trim();
+
+        await Promise.all([
+          fetch('/integration/ghl/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'token': token },
+            body: JSON.stringify({
+              env_source: !!sendOrigin,
+              user_in_conv: !!userInConv,
+              disconnect_alert_phone: phone,
+              disconnect_alert: !!alertOn,
+              trigger: !!triggerEnabled,
+              trigger_1: trigger1,
+              trigger_2: trigger2,
+              trigger_3: trigger3,
+              trigger_4: trigger4,
+              trigger_5: trigger5,
+              ref_instance: (document.getElementById('ghl-ref-instance')?.value || '').trim()
+            })
+          }),
+          fetch('/integration/voiceai/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'token': token },
+            body: JSON.stringify({
+              openai_key: openaiKey,
+              openai_gpt_voice: openaiVoice,
+              elevenlabs_keys: elevenKey,
+              elevenlabs_voice_id: elevenVoice
+            })
+          })
+        ]);
         $('#modalGHLSettings').modal('hide');
         showSuccess('Configurações salvas');
       } catch(_){
         showError('Falha ao salvar configurações');
-      }
+      } finally { if (ghlSave) ghlSave.classList.remove('loading','disabled'); }
     });
   }
 
@@ -380,12 +453,29 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       } catch(_){ }
       try {
+        const ref = json.ref_instance || '';
+        const refDisplay = document.getElementById('ghl-ref-display');
+        if (refDisplay) refDisplay.textContent = ref || '-';
+        const refInputLegacy = document.getElementById('ghl-ref-instance');
+        if (refInputLegacy) refInputLegacy.value = ref || '';
+      } catch(_){ }
+      try {
         const v2 = !!json.user_in_conv;
         const el2 = document.getElementById('ghl-toggle-agent-tag');
         if (el2) {
           const input2 = el2.querySelector ? el2.querySelector('input') : null;
           if (input2) input2.checked = v2; else if (typeof el2.checked !== 'undefined') el2.checked = v2;
         }
+      } catch(_){ }
+      try {
+        const tgl = document.getElementById('ghl-trigger-enabled');
+        if (tgl) tgl.checked = !!json.trigger;
+        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+        setVal('ghl-trigger-1', json.trigger_1);
+        setVal('ghl-trigger-2', json.trigger_2);
+        setVal('ghl-trigger-3', json.trigger_3);
+        setVal('ghl-trigger-4', json.trigger_4);
+        setVal('ghl-trigger-5', json.trigger_5);
       } catch(_){ }
     } catch(_){}
   }
@@ -542,6 +632,223 @@ document.addEventListener('DOMContentLoaded', function() {
 
   init();
 });
+
+// ===== Stevo Voice (Front) =====
+document.addEventListener('DOMContentLoaded', function(){
+  const openVoice = document.getElementById('openVoicePanelMainBtn');
+  if (openVoice) openVoice.addEventListener('click', ()=> window.open('https://voice.stevo.chat','_blank'));
+  const copyVoice = document.getElementById('copyVoicePanelBtn');
+  if (copyVoice) copyVoice.addEventListener('click', async ()=>{
+    const ok = await copyToClipboard('https://voice.stevo.chat');
+    if (ok) showSuccess('URL copiada'); else showError('Falha ao copiar');
+  });
+
+  const createBtn = document.getElementById('btnCreateStevoVoice');
+  const refreshBtn = document.getElementById('btnVoiceRefreshQR');
+  const statusBtn = document.getElementById('btnVoiceStatus');
+  const deleteBtn = document.getElementById('btnVoiceDelete');
+  const copyTokenBtn = document.getElementById('copyVoiceTokenBtn');
+  const voiceQRRefreshBtn = document.getElementById('voiceQRRefreshBtn');
+  const voiceQRStatusBtn = document.getElementById('voiceQRStatusBtn');
+  const voiceQRBackBtn = document.getElementById('voiceQRBackBtn');
+
+  let qrTimer = null; let qrCountdown = 40;
+  function startQRCountdown(){
+    clearInterval(qrTimer); qrCountdown = 40; updateCountdown();
+    qrTimer = setInterval(()=>{ qrCountdown--; updateCountdown(); if (qrCountdown<=0){ clearInterval(qrTimer); document.getElementById('voiceQRInfo').innerHTML = 'QR expirado. Clique em Atualizar QRCode.'; } }, 1000);
+  }
+  function updateCountdown(){ const el=document.getElementById('voiceQRCountdown'); if (el) el.textContent = String(qrCountdown); }
+  function showQR(base64){ const container=document.getElementById('voiceQRContainer'); if(container){ container.innerHTML = base64 ? `<img src="${base64}" style="max-width:240px;">` : '<div class="ui text">Sem QR</div>'; } }
+
+  async function voiceCreate(btn){
+    try {
+      if (btn) btn.classList.add('loading','disabled');
+      const token = getLocalStorageItem('token');
+      const res = await fetch('/integration/voice/create', { method:'POST', headers:{ 'token': token }});
+      const j = await res.json();
+      if (!res.ok || !j.qr_base64 && !j.QRBase64) throw new Error(j.error||'Falha ao criar');
+      const b64 = j.qr_base64 || j.QRBase64; showQR(b64); startQRCountdown();
+      $('#modalVoiceQR').modal('show');
+      if (createBtn) createBtn.classList.add('disabled');
+    } catch(err){ showError(err.message||'Erro ao criar'); }
+    finally { if (btn) btn.classList.remove('loading','disabled'); }
+  }
+
+  async function voiceRefresh(btn){
+    try {
+      if (btn) btn.classList.add('loading','disabled');
+      const token = getLocalStorageItem('token');
+      const res = await fetch('/integration/voice/refresh', { method:'POST', headers:{ 'token': token }});
+      const j = await res.json();
+      if (!res.ok || !j.qr_base64 && !j.QRBase64) throw new Error(j.error||'Falha ao atualizar QR');
+      const b64 = j.qr_base64 || j.QRBase64; showQR(b64); startQRCountdown();
+      if (!$('#modalVoiceQR').modal('is active')) { $('#modalVoiceQR').modal('show'); }
+    } catch(err){ showError(err.message||'Erro ao atualizar QR'); }
+    finally { if (btn) btn.classList.remove('loading','disabled'); }
+  }
+
+  async function voiceStatus(btn){
+    try {
+      if (btn) btn.classList.add('loading','disabled');
+      const token = getLocalStorageItem('token');
+      const res = await fetch('/integration/voice/status', { headers:{ 'token': token }});
+      const j = await res.json();
+      const status = j.status || j.wavoip_status || 'desconhecido';
+      const el = document.getElementById('voiceStatusText'); if (el) el.textContent = status;
+      showSuccess('Status: '+status);
+      // Após verificar, recarrega info do Supabase para refletir mudanças
+      setTimeout(loadVoiceInfo, 300);
+    } catch(err){ showError('Erro ao consultar status'); }
+    finally { if (btn) btn.classList.remove('loading','disabled'); }
+  }
+
+  async function voiceDelete(btn){
+    try {
+      if (btn) btn.classList.add('loading','disabled');
+      const token = getLocalStorageItem('token');
+      const res = await fetch('/integration/voice/delete', { method:'POST', headers:{ 'token': token }});
+      const j = await res.json();
+      if (!res.ok || !j.success) throw new Error(j.error||'Falha ao excluir');
+      showSuccess('Stevo Voice excluído'); if (createBtn) createBtn.classList.remove('disabled');
+    } catch(err){ showError(err.message||'Erro ao excluir'); }
+    finally { if (btn) btn.classList.remove('loading','disabled'); }
+  }
+
+  if (createBtn) createBtn.addEventListener('click', function(e){ voiceCreate(e.currentTarget); });
+  if (refreshBtn) refreshBtn.addEventListener('click', function(e){ voiceRefresh(e.currentTarget); });
+  if (statusBtn) statusBtn.addEventListener('click', function(e){ voiceStatus(e.currentTarget); });
+  if (deleteBtn) deleteBtn.addEventListener('click', function(e){ voiceDelete(e.currentTarget); });
+  if (voiceQRRefreshBtn) voiceQRRefreshBtn.addEventListener('click', function(e){ voiceRefresh(e.currentTarget); });
+  if (voiceQRStatusBtn) voiceQRStatusBtn.addEventListener('click', function(e){ voiceStatus(e.currentTarget); });
+  if (voiceQRBackBtn) voiceQRBackBtn.addEventListener('click', function(){
+    try { $('#modalVoiceQR').modal('hide'); } catch(_){ }
+    // Reabrir o modal de configurações GHL diretamente na aba Stevo Voice
+    try {
+      $('#modalGHLSettings').modal({
+        onVisible: function(){ $('.menu .item').tab('change tab', 'ghl-voice-stevo'); },
+        onApprove: function(){ return false; }
+      }).modal('show');
+      // garante que a aba correta esteja ativa
+      setTimeout(function(){ $('.menu .item').tab('change tab', 'ghl-voice-stevo'); }, 50);
+    } catch(_){ }
+  });
+  if (copyTokenBtn) copyTokenBtn.addEventListener('click', async ()=>{
+    const txt = document.getElementById('voiceTokenText')?.textContent||'';
+    if (!txt || txt==='-') return;
+    const ok = await copyToClipboard(txt.trim());
+    if (ok) showSuccess('Token copiado'); else showError('Falha ao copiar');
+  });
+
+  // Hidratar UI Stevo Voice ao abrir modal: quando for exibido, buscar info atual
+  document.addEventListener('click', function(e){ if (e.target && e.target.id === 'ghlGeneralSettings') { setTimeout(loadVoiceInfo, 300); } });
+
+  async function loadVoiceInfo(){
+    try {
+      const token = getLocalStorageItem('token');
+      const res = await fetch('/integration/voice/info', { headers:{ 'token': token }});
+      const j = await res.json();
+      const status = j.wavoip_status || '';
+      const number = j.id_wavoip || '-';
+      const vtoken = j.wavoip_token || '-';
+      const statusEl = document.getElementById('voiceStatusText'); if (statusEl) statusEl.textContent = status || 'desconhecido';
+      const numEl = document.getElementById('voiceNumberText'); if (numEl) numEl.textContent = number || '-';
+      const tokEl = document.getElementById('voiceTokenText'); if (tokEl) tokEl.textContent = vtoken || '-';
+      // Desabilitar Criar se já existe algo nas colunas
+      if (createBtn) {
+        const hasData = (vtoken && vtoken !== '-') || (number && number !== '-') || (status && status !== '');
+        if (hasData) createBtn.classList.add('disabled'); else createBtn.classList.remove('disabled');
+      }
+    } catch(_){ /* ignore */ }
+  }
+  // também tentar carregar ao fim da página
+  loadVoiceInfo();
+});
+
+// ===== Voice IA (OpenAI / ElevenLabs) =====
+async function hydrateVoiceAI(){
+  const token = getLocalStorageItem('token');
+  try {
+    const res = await fetch('/integration/voiceai/info', { headers:{ 'token': token }});
+    const j = await res.json();
+    if (j.openai_key !== undefined) document.getElementById('openaiKeyInput').value = j.openai_key || '';
+    if (j.openai_gpt_voice) { setDropdownSelection('#openaiVoiceDropdown','#openaiVoiceMenu', j.openai_gpt_voice, j.openai_gpt_voice); document.getElementById('openaiVoiceSelected').textContent = j.openai_gpt_voice; }
+    if (j.elevenlabs_key !== undefined) document.getElementById('elevenKeyInput').value = j.elevenlabs_key || '';
+    if (j.elevenlabs_voice_id) { setDropdownSelection('#elevenVoiceDropdown','#elevenVoiceMenu', j.elevenlabs_voice_id, j.elevenlabs_voice_id); document.getElementById('elevenVoiceSelected').textContent = j.elevenlabs_voice_id; }
+  } catch(_){ }
+
+  bindVoiceAIHandlersOnce();
+}
+
+let _voiceAIBound = false;
+function bindVoiceAIHandlersOnce(){ if (_voiceAIBound) return; _voiceAIBound = true;
+  const token = getLocalStorageItem('token');
+  $('#openaiVoiceDropdown').dropdown();
+  $('#elevenVoiceDropdown').dropdown();
+
+  const loadOpenAI = document.getElementById('loadOpenAIVoicesBtn');
+  if (loadOpenAI) loadOpenAI.addEventListener('click', async function(e){
+    const btn = e.currentTarget; btn.classList.add('loading','disabled');
+    try {
+      const key = (document.getElementById('openaiKeyInput').value||'').trim();
+      let res = await fetch('/integration/voiceai/voices', { method:'POST', headers:{ 'Content-Type':'application/json','token': token }, body: JSON.stringify({ provider:'openai', api_key: key||undefined })});
+      if (!res.ok) res = await fetch('/integration/ghl/voices', { method:'POST', headers:{ 'Content-Type':'application/json','token': token }, body: JSON.stringify({ provider:'openai', api_key: key||undefined })});
+      const j = await res.json();
+      fillVoiceMenu('#openaiVoiceMenu', '#openaiVoiceDropdown', '#openaiVoiceSelected', j.voices||[]);
+    } catch(_){ showError('Falha ao carregar vozes OpenAI'); }
+    finally { btn.classList.remove('loading','disabled'); }
+  });
+
+  const loadEleven = document.getElementById('loadElevenVoicesBtn');
+  if (loadEleven) loadEleven.addEventListener('click', async function(e){
+    const btn = e.currentTarget; btn.classList.add('loading','disabled');
+    try {
+      const key = (document.getElementById('elevenKeyInput').value||'').trim();
+      let res = await fetch('/integration/voiceai/voices', { method:'POST', headers:{ 'Content-Type':'application/json','token': token }, body: JSON.stringify({ provider:'elevenlabs', api_key: key||undefined })});
+      if (!res.ok) res = await fetch('/integration/ghl/voices', { method:'POST', headers:{ 'Content-Type':'application/json','token': token }, body: JSON.stringify({ provider:'elevenlabs', api_key: key||undefined })});
+      const j = await res.json();
+      fillVoiceMenu('#elevenVoiceMenu', '#elevenVoiceDropdown', '#elevenVoiceSelected', j.voices||[]);
+    } catch(_){ showError('Falha ao carregar vozes ElevenLabs'); }
+    finally { btn.classList.remove('loading','disabled'); }
+  });
+
+  const saveBtn = document.getElementById('saveVoiceAISettings');
+  if (saveBtn) saveBtn.addEventListener('click', async function(e){
+    const btn = e.currentTarget; btn.classList.add('loading','disabled');
+    try {
+      const openaiKey = (document.getElementById('openaiKeyInput').value||'').trim();
+      const openaiVoiceId = (document.getElementById('openaiVoiceValue').value||'').trim();
+      const elKey = (document.getElementById('elevenKeyInput').value||'').trim();
+      const elVoiceId = (document.getElementById('elevenVoiceValue').value||'').trim();
+      // Enviar campos explicitamente; strings vazias indicam limpeza
+      const payload = {
+        openai_key: openaiKey,
+        openai_gpt_voice: openaiVoiceId,
+        elevenlabs_keys: elKey, // backend aceita limpar/atualizar e mapeia para elevenlabs_key
+        elevenlabs_voice_id: elVoiceId
+      };
+      const res = await fetch('/integration/voiceai/save', { method:'POST', headers:{ 'Content-Type':'application/json','token': token }, body: JSON.stringify(payload)});
+      if (!res.ok) throw new Error('save failed');
+      // Recarrega estado salvo para garantir persistência visual
+      await hydrateVoiceAI();
+      showSuccess('Configurações de Voice IA salvas');
+    } catch(_){ showError('Falha ao salvar Voice IA'); }
+    finally { btn.classList.remove('loading','disabled'); }
+  });
+}
+
+function fillVoiceMenu(menuSel, dropdownSel, labelSel, voices){
+  const $menu = $(menuSel); $menu.empty();
+  voices.forEach(v => { const name = v.name || v.id; const id = v.id; $menu.append(`<div class="item" data-value="${id}">${name}</div>`); });
+  $(dropdownSel).dropdown('refresh');
+  $(dropdownSel).dropdown({ onChange: function(val, text){ $(labelSel).text(text||val||''); $(dropdownSel+' input[type=hidden]').val(val||''); } });
+}
+
+function setDropdownSelection(dropdownSel, menuSel, id, name){
+  const $menu = $(menuSel);
+  if ($menu.find(`[data-value='${id}']`).length === 0) { $menu.append(`<div class="item" data-value="${id}">${name||id}</div>`); }
+  $(dropdownSel).dropdown('refresh');
+  $(dropdownSel).dropdown('set selected', id);
+}
 
 async function addInstance(data) {
   console.log("Add Instance...");
@@ -1239,7 +1546,7 @@ function init() {
   // Starting
   let notoken=0;
   let scanInterval;
-  // Deep-link via URL or hash: ?token=...&instance=... [&admin=1]
+  // Deep-link via URL or hash: ?token=...&instance=... [&admin=1] [&chat=1]
   try {
     const urlParams = new URLSearchParams(window.location.search);
     const hash = window.location.hash ? window.location.hash.substring(1) : '';
@@ -1247,6 +1554,7 @@ function init() {
     const tokenFromUrl = urlParams.get('token') || urlParams.get('t') || hashParams.get('token') || hashParams.get('t');
     const instanceFromUrl = urlParams.get('instance') || urlParams.get('id') || hashParams.get('instance') || hashParams.get('id');
     const adminFlag = (urlParams.get('admin') || hashParams.get('admin') || '').toLowerCase();
+    const chatFlag = urlParams.get('chat') || hashParams.get('chat');
 
     if (tokenFromUrl) {
       if (instanceFromUrl) {
@@ -1261,6 +1569,13 @@ function init() {
       try { $('#loading').addClass('active'); } catch (_) {}
       Promise.resolve(loginPromise).finally(()=>{
         try { $('#loading').removeClass('active'); } catch (_) {}
+        
+        // Auto-abrir chat se o parâmetro chat=1 estiver presente
+        if (chatFlag === '1' || chatFlag === 'true') {
+          setTimeout(() => {
+            autoOpenChatFromUrl(instanceFromUrl, tokenFromUrl);
+          }, 2000); // Aguardar 2 segundos para garantir que a interface foi carregada
+        }
       });
       return;
     }
@@ -1289,108 +1604,184 @@ function populateInstances(instances) {
   tableBody.empty();
   cardsContainer.empty();
   const currentInstance = getLocalStorageItem('currentInstance');
+  // cache and bind filters
+  instancesCache = Array.isArray(instances) ? instances.slice() : [];
+  bindInstanceFiltersOnce();
+  applyInstanceFilters();
+}
 
-  if(instances.length==0) {
+let _filtersBound = false;
+function bindInstanceFiltersOnce(){
+  if (_filtersBound) return; _filtersBound = true;
+  const debounced = debounce(applyInstanceFilters, 250);
+  $('#instancesSearch').on('input', debounced);
+  $('#filterConnected').on('change', applyInstanceFilters);
+  $('#filterLoggedIn').on('change', applyInstanceFilters);
+  $('#instancesFiltersClear').on('click', function(){
+    $('#instancesSearch').val('');
+    try { $('#filterConnected').dropdown('clear'); } catch(_) { $('#filterConnected').val(''); }
+    try { $('#filterLoggedIn').dropdown('clear'); } catch(_) { $('#filterLoggedIn').val(''); }
+    applyInstanceFilters();
+  });
+}
+
+function applyInstanceFilters(){
+  const q = ($('#instancesSearch').val()||'').toLowerCase().trim();
+  const fConn = $('#filterConnected').val();
+  const fLogin = $('#filterLoggedIn').val();
+
+  let list = instancesCache.slice();
+  if (q) {
+    list = list.filter(it => (it.id||'').toLowerCase().includes(q) || (it.name||'').toLowerCase().includes(q));
+  }
+  if (fConn !== '' && fConn !== null && typeof fConn !== 'undefined') {
+    const want = (fConn === 'true');
+    list = list.filter(it => !!it.connected === want);
+  }
+  if (fLogin !== '' && fLogin !== null && typeof fLogin !== 'undefined') {
+    const want = (fLogin === 'true');
+    list = list.filter(it => !!it.loggedIn === want);
+  }
+
+  updateInstancesStats(instancesCache); // Always calculate stats from all instances
+  renderInstances(list);
+}
+
+function updateInstancesStats(instances) {
+  if (!instances || !Array.isArray(instances)) {
+    // Hide stats if no data
+    $('#instances-stats-bar').hide();
+    return;
+  }
+
+  const total = instances.length;
+  const connected = instances.filter(inst => !!inst.connected).length;
+  const disconnected = total - connected;
+  const loggedIn = instances.filter(inst => !!inst.loggedIn).length;
+
+  // Update the stats display
+  $('#stat-total').text(total);
+  $('#stat-connected').text(connected);
+  $('#stat-disconnected').text(disconnected);
+  $('#stat-logged-in').text(loggedIn);
+
+  // Show stats bar
+  $('#instances-stats-bar').show();
+}
+
+function renderInstances(list){
+  const tableBody = $('#instances-body');
+  const cardsContainer = $('#instances-cards');
+  tableBody.empty();
+  cardsContainer.empty();
+
+  if(!list || list.length===0) {
     const nodatarow = '<tr><td style="text-align:center;" colspan=5>No instances found</td></tr>'
     tableBody.append(nodatarow);
+    return;
   }
-  instances.forEach(instance => {
 
-  const row = `
-      <tr>
-        <td>${instance.id}</td>
-        <td>${instance.name}</td>
-        <td><i class="${instance.connected ? 'check green' : 'times red'} icon"></i> <span class="status ${instance.connected}">${instance.connected ? 'Yes' : 'No'}</span></td>
-        <td><i class="${instance.loggedIn ? 'check green' : 'times red'} icon"></i> <span class="status ${instance.loggedIn}">${instance.loggedIn ? 'Yes' : 'No'}</span></td>
-        <td>
-          <button class="ui primary button dashboard-button" onclick="openDashboard('${instance.id}', '${instance.token}')">
-            <i class="external alternate icon"></i> Open
-          </button>
-          <button class="ui negative button dashboard-button" onclick="deleteInstance('${instance.id}')">
-            <i class="trash alternate icon"></i> Delete
-          </button>
-        </td>
-      </tr>
-  `;
-  tableBody.append(row);
+  list.forEach(instance => {
+    const row = `
+        <tr>
+          <td>${instance.id}</td>
+          <td>${instance.name}</td>
+          <td><i class="${instance.connected ? 'check green' : 'times red'} icon"></i> <span class="status ${instance.connected}">${instance.connected ? 'Yes' : 'No'}</span></td>
+          <td><i class="${instance.loggedIn ? 'check green' : 'times red'} icon"></i> <span class="status ${instance.loggedIn}">${instance.loggedIn ? 'Yes' : 'No'}</span></td>
+          <td>
+            <button class="ui primary button dashboard-button" onclick="openDashboard('${instance.id}', '${instance.token}')">
+              <i class="external alternate icon"></i> Open
+            </button>
+            <button class="ui negative button dashboard-button" onclick="deleteInstance('${instance.id}')">
+              <i class="trash alternate icon"></i> Delete
+            </button>
+          </td>
+        </tr>
+    `;
+    tableBody.append(row);
 
-  const card = `
-      <div class="ui fluid card hidden no-hover" id="instance-card-${instance.id}">
-          <div class="content">
-              <div class="ui ${instance.loggedIn ? 'one' : 'two'} column stackable grid">
-                  <!-- Left Column - Instance Info -->
-                  <div class="column">
-                      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
-                        ${instance.profile_pic_url ? `<img src="${instance.profile_pic_url}" alt="avatar" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.1);"/>` : `<div class="chat-avatar" style="width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#2b2f31;color:#9aa0a6;border:1px solid rgba(255,255,255,0.08);">${(instance.name||'S').slice(0,1).toUpperCase()}</div>`}
+    const card = `
+        <div class="ui fluid card hidden no-hover" id="instance-card-${instance.id}">
+            <div class="content">
+                <div class="ui ${instance.loggedIn ? 'one' : 'two'} column stackable grid">
+                    <!-- Left Column - Instance Info -->
+                    <div class="column">
+                        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+                          ${instance.profile_pic_url ? `<img src="${instance.profile_pic_url}" alt="avatar" style="width:48px;height:48px;border-radius:50%;object-fit:cover;border:1px solid rgba(255,255,255,0.1);"/>` : `<div class=\"chat-avatar\" style=\"width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#2b2f31;color:#9aa0a6;border:1px solid rgba(255,255,255,0.08);\">${(instance.name||'S').slice(0,1).toUpperCase()}</div>`}
+                          <div>
+                            <div class="header" style="font-size: 1.3em; margin-bottom: 0.25rem;">${instance.name}</div>
+                            ${instance.profile_name ? `<div class="meta" style="opacity:.8;">${instance.profile_name}</div>` : ''}
+                          </div>
+                        </div>
+                            <div class="ui labels" style="margin-top: 0.25em;">
+                                <div class="ui ${instance.connected ? 'green' : 'red'} horizontal label">
+                                    <i class="${instance.connected ? 'check' : 'times'} icon"></i>
+                                    ${instance.connected ? 'Connected' : 'Disconnected'}
+                                </div>
+                                <div class="ui ${instance.loggedIn ? 'green' : 'red'} horizontal label">
+                                    <i class="${instance.loggedIn ? 'check' : 'times'} icon"></i>
+                                    ${instance.loggedIn ? 'Logged In' : 'Logged Out'}
+                                </div>
+                            </div>
+                        
+                        <div class="meta" style="margin-bottom: .5rem; opacity:.8;">Instance ID: ${instance.id}</div>
+                        <div style="display:grid;grid-template-columns:160px 1fr;gap:6px 12px;align-items:center;">
+                          <div style="opacity:.7;">Token</div>
+                          <div style="display:flex;align-items:center;gap:8px;word-break:break-all;">
+                            <span id="masked-token-${instance.id}">${maskToken(instance.token)}</span>
+                            <button class="ui tiny basic button copy-token-btn" id="copy-token-${instance.id}" title="Copy token"><i class="copy icon"></i></button>
+                          </div>
+                          <div style="opacity:.7;">JID</div>
+                          <div>${instance.jid || 'Not available'}</div>
+                          <div style="opacity:.7;">Webhook</div>
+                          <div style="word-break:break-all;">${instance.webhook || 'Not configured'}</div>
+                          <div style="opacity:.7;">Subscribed Events</div>
+                          <div>${instance.events || 'Not configured'}</div>
+                          <div style="opacity:.7;">Proxy</div>
+                          <div>${instance.proxy_config && instance.proxy_config.enabled ? 'Enabled' : 'Disabled'}</div>
+                          <div style="opacity:.7;">Proxy URL</div>
+                          <div>${instance.proxy_config ? (instance.proxy_config.proxy_url || 'Not configured') : 'Not configured'}</div>
+                        </div>
+                    </div>
+                    ${!instance.loggedIn ? `
+                    <div class="column" style="display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                        <div class="ui segment" style="width: 100%; max-width: 200px; height: 200px; display: flex; justify-content: center; align-items: center;">
+                          ${instance.qrcode ? 
+                            `<img src="${instance.qrcode}" style="max-height: 100%; max-width: 100%;">`
+                            :
+                            `<div class=\"ui icon header\" style=\"text-align: center;\">
+                                    <i class=\"qrcode icon\" style=\"font-size: 3em;\"></i>
+                                    <div class=\"sub header\">QR Code will appear here</div>
+                               </div>`}
+                        </div>
                         <div>
-                          <div class="header" style="font-size: 1.3em; margin-bottom: 0.25rem;">${instance.name}</div>
-                          ${instance.profile_name ? `<div class="meta" style="opacity:.8;">${instance.profile_name}</div>` : ''}
+                          Open WhatsApp on your phone and tap<br/><i class="ellipsis vertical icon"></i>> Linked devices > Link a device.
                         </div>
                       </div>
-                          <div class="ui labels" style="margin-top: 0.25em;">
-                              <div class="ui ${instance.connected ? 'green' : 'red'} horizontal label">
-                                  <i class="${instance.connected ? 'check' : 'times'} icon"></i>
-                                  ${instance.connected ? 'Connected' : 'Disconnected'}
-                              </div>
-                              <div class="ui ${instance.loggedIn ? 'green' : 'red'} horizontal label">
-                                  <i class="${instance.loggedIn ? 'check' : 'times'} icon"></i>
-                                  ${instance.loggedIn ? 'Logged In' : 'Logged Out'}
-                              </div>
-                          </div>
-                      
-                      <div class="meta" style="margin-bottom: .5rem; opacity:.8;">Instance ID: ${instance.id}</div>
-                      <div style="display:grid;grid-template-columns:160px 1fr;gap:6px 12px;align-items:center;">
-                        <div style="opacity:.7;">Token</div>
-                        <div style="word-break:break-all;">${instance.token}</div>
-                        <div style="opacity:.7;">JID</div>
-                        <div>${instance.jid || 'Not available'}</div>
-                        <div style="opacity:.7;">Webhook</div>
-                        <div style="word-break:break-all;">${instance.webhook || 'Not configured'}</div>
-                        <div style="opacity:.7;">Subscribed Events</div>
-                        <div>${instance.events || 'Not configured'}</div>
-                        <div style="opacity:.7;">Proxy</div>
-                        <div>${instance.proxy_config.enabled ? 'Enabled' : 'Disabled'}</div>
-                        <div style="opacity:.7;">Proxy URL</div>
-                        <div>${instance.proxy_config.proxy_url || 'Not configured'}</div>
-                      </div>
+                      ` : `
+                      <!--one column when no qr to display-->
+                      `}
                   </div>
-                  
-                  <!-- Right Column - QR Code (only shown if not logged in) -->
-                  ${!instance.loggedIn ? `
-                  <div class="column" style="display: flex; flex-direction: column; justify-content: center; align-items: center;">
-                      <div class="ui segment" style="width: 100%; max-width: 200px; height: 200px; display: flex; justify-content: center; align-items: center;">
-                        ${instance.qrcode ? 
-                          `<img src="${instance.qrcode}" style="max-height: 100%; max-width: 100%;">
-                      </div>
-                      <div>
-                        Open WhatsApp on your phone and tap<br/><i class="ellipsis vertical icon"></i>> Linked devices > Link a device.
-                          ` : 
-                                `<div class="ui icon header" style="text-align: center;">
-                                    <i class="qrcode icon" style="font-size: 3em;"></i>
-                                    <div class="sub header">QR Code will appear here</div>
-                                </div>`
-                           }
-                      </div>
-                    </div>
-                    ` : `
-                    <!--one column when no qr to display-->
-                    `}
+              </div>
+              
+              <div class="extra content">
+                <button class="ui primary positive button dashboard-button ${instance.connected === true ? 'hidden' : ''}" id="button-connect-${instance.id}" onclick="connect('${instance.token}')">Connect</button>
+                <button class="ui primary negative button dashboard-button ${instance.connected === true ? '' : 'hidden'}" id="button-logout-${instance.id}" onclick="logout('${instance.token}')">Logout</button>
+                <button class="ui blue button dashboard-button ${instance.connected === true && instance.loggedIn === true ? '' : 'hidden'}" id="button-chat-${instance.id}" onclick="openInstanceChat('${instance.id}', '${instance.token}', '${instance.name}')">
+                  <i class="comments icon"></i> Chat
+                </button>
+                <button class="ui teal button dashboard-button ${instance.connected === true && instance.loggedIn === true ? '' : 'hidden'}" id="button-chat-link-${instance.id}" onclick="copyChatLink('${instance.id}', '${instance.token}', '${instance.name}')" title="Copiar link direto do chat">
+                  <i class="linkify icon"></i> Link
+                </button>
+                <div class="ui toggle checkbox" style="margin-left:10px;">
+                  <input type="checkbox" id="toggle-ignore-groups-${instance.id}" ${instance.ignore_groups ? 'checked' : ''}>
+                  <label>Ignore group messages</label>
                 </div>
-            </div>
-            
-            <div class="extra content">
-              <button class="ui primary positive button dashboard-button ${instance.connected === true ? 'hidden' : ''}" id="button-connect-${instance.id}" onclick="connect('${instance.token}')">Connect</button>
-              <button class="ui primary negative button dashboard-button ${instance.connected === true ? '' : 'hidden'}" id="button-logout-${instance.id}" onclick="logout('${instance.token}')">Logout</button>
-              <div class="ui toggle checkbox" style="margin-left:10px;">
-                <input type="checkbox" id="toggle-ignore-groups-${instance.id}" ${instance.ignore_groups ? 'checked' : ''}>
-                <label>Ignore group messages</label>
-              </div>
-              <button class="ui primary positive button dashboard-button ${instance.connected === true && instance.loggedIn === false ? '' : 'hidden'} id="button-logout-${instance.id}" onclick="modalPairPhone()">Login with Pairing Code</button>
-              </div>
+                <button class="ui primary positive button dashboard-button ${instance.connected === true && instance.loggedIn === false ? '' : 'hidden'} id="button-logout-${instance.id}" onclick="modalPairPhone()">Login with Pairing Code</button>
+                </div>
         </div>
         `;
     cardsContainer.append(card);
-    // bind toggle event
     setTimeout(() => {
       const el = document.getElementById(`toggle-ignore-groups-${instance.id}`);
       if (el) {
@@ -1409,18 +1800,43 @@ function populateInstances(instances) {
           }
         });
       }
+      const copyBtn = document.getElementById(`copy-token-${instance.id}`);
+      if (copyBtn) {
+        copyBtn.addEventListener('click', async () => {
+          const ok = await copyToClipboard(String(instance.token || ''));
+          if (ok) { showSuccess('Token copiado para a área de transferência'); }
+          else { showError('Não foi possível copiar o token'); }
+        });
+      }
     }, 0);
   });
-  if(currentInstance!==null) {
-     const showInstanceId=`instance-card-${currentInstance}`
-     $('#'+showInstanceId).removeClass('hidden');
-     
-     // Store current instance data globally for use in modals
-     const currentInstanceObj = instances.find(inst => inst.id === currentInstance);
-     if (currentInstanceObj) {
-       currentInstanceData = currentInstanceObj;
-     }
-  } 
+
+  // Keep previously selected card visible (if any)
+  const currentInstance = getLocalStorageItem('currentInstance');
+  if (currentInstance) {
+    const showInstanceId = `instance-card-${currentInstance}`;
+    try { $(`#${showInstanceId}`).removeClass('hidden'); } catch(_) {}
+    const currentInstanceObj = list.find(inst => inst.id === currentInstance) || instancesCache.find(inst => inst.id === currentInstance);
+    if (currentInstanceObj) { currentInstanceData = currentInstanceObj; }
+  }
+}
+
+function debounce(fn, wait){
+  let t; return function(){
+    const args = arguments; const ctx = this;
+    clearTimeout(t); t = setTimeout(()=>fn.apply(ctx,args), wait);
+  }
+}
+
+function maskToken(token) {
+  try {
+    const s = String(token || '');
+    if (s.length <= 6) return s;
+    const visible = s.slice(-6);
+    return '•••••••••••••••••••••••• ' + visible;
+  } catch(_) {
+    return String(token || '');
+  }
 }
 
 /**
@@ -1829,3 +2245,1378 @@ async function saveProxyConfig() {
     console.error('Error:', error);
   }
 }
+
+  // Editar Nº de Referência
+  const refEditBtn = document.getElementById('ghlRefEditBtn');
+  if (refEditBtn) {
+    refEditBtn.addEventListener('click', function(){
+      const current = document.getElementById('ghl-ref-display')?.textContent || '';
+      const input = document.getElementById('inputRefInstance');
+      if (input) input.value = (current === '-' ? '' : current);
+      try { $('#modalEditRef').modal({ closable: true }).modal('show'); } catch(_){ document.getElementById('modalEditRef').style.display='block'; }
+    });
+  }
+  const saveRefBtn = document.getElementById('saveRefEditBtn');
+  if (saveRefBtn) {
+    saveRefBtn.addEventListener('click', async function(){
+      const token = getLocalStorageItem('token');
+      const value = (document.getElementById('inputRefInstance')?.value || '').trim();
+      saveRefBtn.classList.add('loading','disabled');
+      try {
+        const res = await fetch('/integration/ghl/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'token': token },
+          body: JSON.stringify({ ref_instance: value })
+        });
+        if (!res.ok) throw new Error('Falha ao salvar referência');
+        try { $('#modalEditRef').modal('hide'); } catch(_){ document.getElementById('modalEditRef').style.display='none'; }
+        showSuccess('Referência atualizada');
+        if (typeof refreshGHLStatus === 'function') {
+          await refreshGHLStatus();
+        } else {
+          const disp = document.getElementById('ghl-ref-display');
+          if (disp) disp.textContent = value || '-';
+        }
+      } catch(err){
+        showError(err.message || 'Erro ao salvar referência');
+      } finally { saveRefBtn.classList.remove('loading','disabled'); }
+    });
+  }
+  const cancelRefBtn = document.getElementById('cancelRefEditBtn');
+  if (cancelRefBtn) {
+    cancelRefBtn.addEventListener('click', function(){ try { $('#modalEditRef').modal('hide'); } catch(_){ document.getElementById('modalEditRef').style.display='none'; } });
+  }
+
+// =====================================
+// CHAT INTEGRADO - FUNCTIONS
+// =====================================
+
+// Chat state management
+let chatState = {
+  active: false,
+  instanceId: null,
+  instanceToken: null,
+  instanceName: null,
+  activeContact: null,
+  conversations: [],
+  messages: {},
+  websocket: null
+};
+
+// Abrir modal de chat para uma instância específica
+function openInstanceChat(instanceId, token, instanceName) {
+  console.log('Opening chat for instance:', instanceId, instanceName);
+  
+  // Validar se a instância está conectada e logada
+  const instance = instancesCache.find(inst => inst.id === instanceId);
+  if (!instance || !instance.connected || !instance.loggedIn) {
+    showError('Instância deve estar conectada e logada para usar o chat');
+    return;
+  }
+
+  // Atualizar estado do chat
+  chatState.active = true;
+  chatState.instanceId = instanceId;
+  chatState.instanceToken = token;
+  chatState.instanceName = instanceName;
+  
+  // Abrir modal de chat
+  $('#chatModal').modal({
+    closable: false,
+    onShow: function() {
+      initializeChat();
+    },
+    onHidden: function() {
+      cleanupChat();
+    }
+  }).modal('show');
+}
+
+// Inicializar chat (carregar conversas, conectar WebSocket)
+async function initializeChat() {
+  console.log('Initializing chat for:', chatState.instanceName);
+  
+  try {
+    // Mostrar loading
+    $('.chat-loading').removeClass('hidden');
+    $('.chat-content').addClass('hidden');
+    
+    // Configurar título do chat
+    document.getElementById('chatInstanceTitle').textContent = `Chat - ${chatState.instanceName}`;
+    document.getElementById('chatInstanceStatus').textContent = 'Online';
+    
+    // Carregar conversas (placeholder - será implementado)
+    await loadConversations();
+    
+    // Mostrar estado inicial
+    if (chatState.conversations.length === 0) {
+      document.getElementById('chatEmptyMessages').style.display = 'flex';
+      document.getElementById('chatConversationHeader').classList.add('hidden');
+      document.getElementById('chatInputContainer').classList.add('hidden');
+    } else {
+      document.getElementById('chatEmptyMessages').style.display = 'none';
+      document.getElementById('chatConversationHeader').classList.remove('hidden');
+      document.getElementById('chatInputContainer').classList.remove('hidden');
+    }
+    
+    // Conectar WebSocket para tempo real
+    connectChatWebSocket();
+    
+    // Mostrar conteúdo
+    $('.chat-loading').addClass('hidden');
+    $('.chat-content').removeClass('hidden');
+    
+    showSuccess(`Chat aberto para ${chatState.instanceName}`);
+  } catch (error) {
+    console.error('Error initializing chat:', error);
+    showError('Erro ao inicializar chat: ' + error.message);
+  }
+}
+
+// Cache para informações de contatos (nome + foto)
+const contactCache = new Map();
+
+// Buscar informações do contato (nome + foto)
+async function getContactProfile(contactJid) {
+  // Verificar cache primeiro
+  if (contactCache.has(contactJid)) {
+    return contactCache.get(contactJid);
+  }
+  
+  try {
+    // Extrair número do JID (remover @s.whatsapp.net)
+    const phoneNumber = contactJid.replace('@s.whatsapp.net', '');
+    
+    const response = await fetch('/user/profile', {
+      method: 'POST',
+      headers: {
+        'token': chatState.instanceToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        phone: phoneNumber
+      })
+    });
+    
+    if (response.ok) {
+      const profileData = await response.json();
+      
+      const contactInfo = {
+        jid: profileData.jid || contactJid,
+        number: profileData.number || phoneNumber,
+        profileName: profileData.profileName || phoneNumber,
+        profilePicUrl: profileData.profilePicUrl || null,
+        displayName: profileData.profileName || phoneNumber
+      };
+      
+      // Salvar no cache
+      contactCache.set(contactJid, contactInfo);
+      
+      // Salvar no banco de dados via API
+      try {
+        await fetch('/chat/profile/update', {
+          method: 'POST',
+          headers: {
+            'token': chatState.instanceToken,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            jid: contactJid,
+            displayName: contactInfo.displayName,
+            profilePicUrl: contactInfo.profilePicUrl
+          })
+        });
+        console.log('Profile saved to database:', contactJid);
+      } catch (error) {
+        console.warn('Failed to save profile to database:', error);
+      }
+      
+      console.log('Contact profile loaded:', contactInfo);
+      return contactInfo;
+    } else {
+      console.warn('Failed to load profile for:', contactJid);
+    }
+  } catch (error) {
+    console.error('Error loading contact profile:', error);
+  }
+  
+  // Fallback: retornar dados básicos
+  const fallbackInfo = {
+    jid: contactJid,
+    number: contactJid.replace('@s.whatsapp.net', ''),
+    profileName: contactJid.replace('@s.whatsapp.net', ''),
+    profilePicUrl: null,
+    displayName: contactJid.replace('@s.whatsapp.net', '')
+  };
+  
+  contactCache.set(contactJid, fallbackInfo);
+  return fallbackInfo;
+}
+
+// Carregar lista de conversas (dados reais)
+async function loadConversations() {
+  console.log('Loading conversations...');
+  
+  try {
+    const response = await fetch('/chat/conversations', {
+      method: 'GET',
+      headers: {
+        'token': chatState.instanceToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    chatState.conversations = data || [];
+    
+    console.log('Loaded conversations:', chatState.conversations.length);
+    
+    // Buscar informações de perfil para cada conversa
+    await loadContactProfiles();
+    
+    renderConversationsList();
+    
+  } catch (error) {
+    console.error('Error loading conversations:', error);
+    // Fallback to mock data for testing
+    chatState.conversations = [
+      {
+        id: '5511999999999@s.whatsapp.net',
+        name: 'João Silva',
+        lastMessage: 'Oi, como você está?',
+        timestamp: new Date().getTime() - 300000,
+        unread: 2,
+        avatar: null
+      },
+      {
+        id: '5511888888888@s.whatsapp.net', 
+        name: 'Maria Santos',
+        lastMessage: 'Perfeito! Obrigada',
+        timestamp: new Date().getTime() - 600000,
+        unread: 0,
+        avatar: null
+      }
+    ];
+    renderConversationsList();
+  }
+}
+
+// Carregar informações de perfil para todas as conversas
+async function loadContactProfiles() {
+  console.log('Loading contact profiles...');
+  
+  // Buscar perfis em paralelo (limitado para evitar sobrecarga)
+  const batchSize = 5;
+  for (let i = 0; i < chatState.conversations.length; i += batchSize) {
+    const batch = chatState.conversations.slice(i, i + batchSize);
+    
+    await Promise.all(batch.map(async (conversation) => {
+      try {
+        const profile = await getContactProfile(conversation.id);
+        
+        // Atualizar conversa com informações do perfil
+        conversation.profileName = profile.profileName;
+        conversation.profilePicUrl = profile.profilePicUrl;
+        conversation.displayName = profile.displayName;
+        conversation.number = profile.number;
+        
+        // Usar profileName como nome se existir, senão usar número
+        if (!conversation.name || conversation.name === conversation.id) {
+          conversation.name = profile.displayName;
+        }
+        
+        console.log('Updated conversation with profile:', conversation);
+      } catch (error) {
+        console.warn('Failed to load profile for conversation:', conversation.id);
+      }
+    }));
+  }
+  
+  console.log('Contact profiles loaded');
+}
+
+// Atualizar avatar do header da conversa
+function updateHeaderAvatar(conversation) {
+  const avatarContainer = document.querySelector('.chat-contact-avatar');
+  if (!avatarContainer) return;
+  
+  if (conversation.profilePicUrl) {
+    avatarContainer.innerHTML = `
+      <img src="${conversation.profilePicUrl}" 
+           alt="${conversation.displayName || conversation.name}" 
+           class="chat-avatar-img"
+           onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+      <i class="user circle large icon" style="display: none;"></i>
+    `;
+  } else {
+    avatarContainer.innerHTML = '<i class="user circle large icon"></i>';
+  }
+}
+
+// Renderizar lista de conversas
+function renderConversationsList() {
+  const container = document.getElementById('chatConversationsList');
+  if (!container) return;
+  
+  container.innerHTML = '';
+  
+  chatState.conversations.forEach(conv => {
+    const lastMessageTime = formatChatTime(conv.timestamp);
+    const unreadBadge = conv.unread > 0 ? 
+      `<div class="ui tiny red circular label">${conv.unread}</div>` : '';
+    
+    // Avatar: usar foto se disponível, senão ícone padrão
+    const avatarContent = conv.profilePicUrl ? 
+      `<img src="${conv.profilePicUrl}" alt="${conv.name}" class="chat-avatar-img" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+       <i class="user circle icon" style="display: none;"></i>` :
+      `<i class="user circle icon"></i>`;
+    
+    // Nome: usar displayName se disponível
+    const displayName = conv.displayName || conv.name || conv.id.replace('@s.whatsapp.net', '');
+    
+    const conversationItem = `
+      <div class="chat-conversation-item ${chatState.activeContact === conv.id ? 'active' : ''}" 
+           data-contact="${conv.id}" 
+           onclick="selectConversation('${conv.id}')">
+        <div class="chat-conversation-avatar">
+          ${avatarContent}
+        </div>
+        <div class="chat-conversation-content">
+          <div class="chat-conversation-header">
+            <span class="chat-conversation-name">${displayName}</span>
+            <span class="chat-conversation-time">${lastMessageTime}</span>
+          </div>
+          <div class="chat-conversation-preview">
+            <span class="chat-last-message">${conv.lastMessage}</span>
+            ${unreadBadge}
+          </div>
+        </div>
+      </div>
+    `;
+    
+    container.innerHTML += conversationItem;
+  });
+  
+  // Selecionar primeira conversa se nenhuma ativa
+  if (!chatState.activeContact && chatState.conversations.length > 0) {
+    selectConversation(chatState.conversations[0].id);
+  }
+}
+
+// Selecionar uma conversa
+function selectConversation(contactId) {
+  console.log('Selecting conversation:', contactId);
+  
+  chatState.activeContact = contactId;
+  
+  // Zerar contador de mensagens não lidas da conversa ativa
+  const activeConversation = chatState.conversations.find(c => c.id === contactId);
+  if (activeConversation && activeConversation.unread > 0) {
+    activeConversation.unread = 0;
+    renderConversationsList(); // Re-renderizar para atualizar o badge
+  }
+  
+  // Atualizar visual da lista
+  document.querySelectorAll('.chat-conversation-item').forEach(item => {
+    item.classList.remove('active');
+  });
+  
+  document.querySelector(`[data-contact="${contactId}"]`)?.classList.add('active');
+  
+  // Atualizar header da conversa
+  const conversation = activeConversation;
+  if (conversation) {
+    const displayName = conversation.displayName || conversation.name || contactId.replace('@s.whatsapp.net', '');
+    document.getElementById('chatContactName').textContent = displayName;
+    document.getElementById('chatContactStatus').textContent = 'Online';
+    
+    // Atualizar avatar do header
+    updateHeaderAvatar(conversation);
+    
+    // Buscar perfil se ainda não carregado
+    if (!conversation.profileName && !conversation.profilePicUrl) {
+      getContactProfile(contactId).then(profile => {
+        conversation.profileName = profile.profileName;
+        conversation.profilePicUrl = profile.profilePicUrl;
+        conversation.displayName = profile.displayName;
+        
+        // Atualizar nome no header
+        document.getElementById('chatContactName').textContent = profile.displayName;
+        
+        // Atualizar avatar do header
+        updateHeaderAvatar(conversation);
+        
+        // Re-renderizar lista para atualizar avatar
+        renderConversationsList();
+      });
+    }
+  }
+  
+  // Mostrar header e input da conversa
+  document.getElementById('chatConversationHeader').classList.remove('hidden');
+  document.getElementById('chatInputContainer').classList.remove('hidden');
+  document.getElementById('chatEmptyMessages').style.display = 'none';
+  
+  // Carregar mensagens da conversa
+  loadConversationMessages(contactId);
+}
+
+// Carregar mensagens de uma conversa
+async function loadConversationMessages(contactId) {
+  console.log('Loading messages for:', contactId);
+  
+  const messagesContainer = document.getElementById('chatMessagesContainer');
+  if (!messagesContainer) return;
+  
+  try {
+    const response = await fetch(`/chat/messages/${encodeURIComponent(contactId)}?limit=50&offset=0`, {
+      method: 'GET',
+      headers: {
+        'token': chatState.instanceToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    chatState.messages[contactId] = data || [];
+    
+    console.log('Loaded messages:', chatState.messages[contactId].length);
+    renderMessages(contactId);
+    
+  } catch (error) {
+    console.error('Error loading messages:', error);
+    // Fallback to mock data for testing
+    const mockMessages = [
+      {
+        id: 'msg1',
+        from: contactId,
+        text: 'Oi, tudo bem?',
+        timestamp: new Date().getTime() - 600000,
+        fromMe: false,
+        status: 'read'
+      },
+      {
+        id: 'msg2', 
+        from: 'me',
+        text: 'Oi! Tudo ótimo, e você?',
+        timestamp: new Date().getTime() - 300000,
+        fromMe: true,
+        status: 'read'
+      },
+      {
+        id: 'msg3',
+        from: contactId,
+        text: 'Também estou bem, obrigado!',
+        timestamp: new Date().getTime() - 100000,
+        fromMe: false,
+        status: 'delivered'
+      }
+    ];
+    
+    chatState.messages[contactId] = mockMessages;
+    renderMessages(contactId);
+  }
+  
+  // Scroll para baixo
+  setTimeout(() => {
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }, 100);
+}
+
+// Renderizar mensagens com suporte a mídia
+function renderMessages(contactId) {
+  const container = document.getElementById('chatMessagesContainer');
+  if (!container) return;
+  
+  const messages = chatState.messages[contactId] || [];
+  container.innerHTML = '';
+  
+  // Buscar informações do contato (só para referência futura se necessário)
+  const conversation = chatState.conversations.find(conv => conv.jid === contactId);
+  
+  messages.forEach(msg => {
+    const messageTime = formatChatTime(msg.timestamp);
+    const messageClass = msg.fromMe ? 'sent' : 'received';
+    const statusIcon = msg.fromMe ? getMessageStatusIcon(msg.status) : '';
+    
+    // Renderizar conteúdo baseado no tipo de mensagem
+    let messageContent = '';
+    
+    if (msg.messageType === 'image' && msg.mediaURL) {
+      messageContent = `
+        <div class="chat-media-container">
+          <img src="${msg.mediaURL}" alt="Imagem" class="chat-media-image" 
+               onclick="openImageModal('${msg.mediaURL}')"
+               onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+          <div class="chat-media-fallback" style="display: none;">
+            <i class="image icon"></i>
+            <span>📷 Imagem</span>
+          </div>
+          ${msg.text ? `<div class="chat-media-caption">${msg.text}</div>` : ''}
+        </div>
+      `;
+    } else if (msg.messageType === 'video' && msg.mediaURL) {
+      messageContent = `
+        <div class="chat-media-container">
+          <video controls class="chat-media-video">
+            <source src="${msg.mediaURL}" type="${msg.mediaType || 'video/mp4'}">
+            <div class="chat-media-fallback">
+              <i class="video icon"></i>
+              <span>🎥 Vídeo</span>
+            </div>
+          </video>
+          ${msg.text ? `<div class="chat-media-caption">${msg.text}</div>` : ''}
+        </div>
+      `;
+    } else if (msg.messageType === 'audio' && msg.mediaURL) {
+      const audioId = `audio-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      messageContent = `
+        <div class="chat-media-container whatsapp-audio-player" data-audio-id="${audioId}">
+          <div class="audio-player-container">
+            <div class="audio-controls">
+              <button class="audio-play-btn" data-audio="${audioId}">
+                <i class="play icon"></i>
+              </button>
+            </div>
+            <div class="audio-waveform-container">
+              <div class="audio-waveform" data-audio="${audioId}">
+                <div class="waveform-bars">
+                  ${Array.from({length: 40}, (_, i) => `<div class="bar" style="height: ${Math.random() * 80 + 20}%"></div>`).join('')}
+                </div>
+                <div class="audio-progress-overlay"></div>
+              </div>
+              <div class="audio-time-container">
+                <span class="audio-current-time">0:00</span>
+                <div class="audio-speed-control">
+                  <button class="speed-btn" data-audio="${audioId}" data-speed="1">1x</button>
+                </div>
+                <span class="audio-duration">--:--</span>
+              </div>
+            </div>
+          </div>
+          <audio preload="metadata" data-id="${audioId}" style="display: none;">
+            <source src="${msg.mediaURL}" type="${msg.mediaType || 'audio/mpeg'}">
+          </audio>
+          ${msg.text ? `<div class="chat-media-caption">${msg.text}</div>` : ''}
+        </div>
+      `;
+    } else if (msg.messageType === 'document' && msg.mediaURL) {
+      const fileName = msg.fileName || 'Documento';
+      const fileSize = msg.fileSize ? formatFileSize(msg.fileSize) : '';
+      messageContent = `
+        <div class="chat-media-container chat-document">
+          <i class="file outline icon"></i>
+          <div class="chat-document-info">
+            <div class="chat-document-name">${fileName}</div>
+            ${fileSize ? `<div class="chat-document-size">${fileSize}</div>` : ''}
+          </div>
+          <a href="${msg.mediaURL}" target="_blank" class="ui mini primary button">
+            <i class="download icon"></i>
+            Baixar
+          </a>
+        </div>
+      `;
+    } else if (msg.messageType === 'sticker' && msg.mediaURL) {
+      messageContent = `
+        <div class="chat-media-container">
+          <img src="${msg.mediaURL}" alt="Figurinha" class="chat-media-sticker">
+        </div>
+      `;
+    } else {
+      // Mensagem de texto normal
+      messageContent = `<div class="chat-message-text">${msg.text}</div>`;
+    }
+    
+    const messageElement = `
+      <div class="chat-message ${messageClass}">
+        <div class="chat-message-content">
+          ${messageContent}
+          <div class="chat-message-meta">
+            <span class="chat-message-time">${messageTime}</span>
+            ${statusIcon}
+          </div>
+        </div>
+      </div>
+    `;
+    
+    container.innerHTML += messageElement;
+  });
+  
+  // Inicializar áudios simples
+  setTimeout(() => {
+    // Carregar metadados dos áudios
+    document.querySelectorAll('audio[data-id]').forEach(audio => {
+      const durationEl = audio.closest('.whatsapp-audio-player')?.querySelector('.audio-duration');
+      audio.addEventListener('loadedmetadata', () => {
+        if (durationEl && audio.duration && isFinite(audio.duration)) {
+          durationEl.textContent = formatAudioTime(audio.duration);
+        }
+      });
+    });
+  }, 100);
+}
+
+// Função auxiliar para formatar tamanho de arquivo
+function formatFileSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+// Função para abrir modal de imagem
+function openImageModal(imageUrl) {
+  // Criar modal simples para visualizar imagem
+  const modal = document.createElement('div');
+  modal.style.cssText = `
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+    background: rgba(0,0,0,0.8); z-index: 9999; display: flex; 
+    align-items: center; justify-content: center; cursor: pointer;
+  `;
+  
+  const img = document.createElement('img');
+  img.src = imageUrl;
+  img.style.cssText = `
+    max-width: 90%; max-height: 90%; object-fit: contain; 
+    border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  `;
+  
+  modal.appendChild(img);
+  document.body.appendChild(modal);
+  
+  // Fechar ao clicar
+  modal.onclick = () => {
+    document.body.removeChild(modal);
+  };
+}
+
+// =========================================
+// WHATSAPP AUDIO PLAYER FUNCTIONS
+// =========================================
+
+// Inicializar todos os players de áudio
+function initializeAudioPlayers() {
+  document.addEventListener('click', function(e) {
+    // Play/Pause button
+    if (e.target.closest('.audio-play-btn')) {
+      const btn = e.target.closest('.audio-play-btn');
+      const audioId = btn.getAttribute('data-audio');
+      toggleAudioPlayPause(audioId);
+      return;
+    }
+    
+    // Speed control button
+    if (e.target.closest('.speed-btn')) {
+      const btn = e.target.closest('.speed-btn');
+      const audioId = btn.getAttribute('data-audio');
+      changeAudioSpeed(audioId);
+      return;
+    }
+    
+    // Waveform click
+    if (e.target.closest('.audio-waveform')) {
+      const waveform = e.target.closest('.audio-waveform');
+      const audioId = waveform.getAttribute('data-audio');
+      const rect = waveform.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const percentage = clickX / rect.width;
+      seekAudio(audioId, percentage);
+      return;
+    }
+  });
+}
+
+// Toggle play/pause audio
+function toggleAudioPlayPause(audioId) {
+  const audio = document.querySelector(`audio[data-id="${audioId}"]`);
+  const playBtn = document.querySelector(`.audio-play-btn[data-audio="${audioId}"]`);
+  const icon = playBtn?.querySelector('i');
+  
+  if (!audio || !playBtn || !icon) return;
+  
+  if (audio.paused) {
+    // Pausar todos os outros áudios
+    document.querySelectorAll('audio').forEach(a => {
+      if (a !== audio) {
+        a.pause();
+        const otherBtn = document.querySelector(`.audio-play-btn[data-audio="${a.getAttribute('data-id')}"]`);
+        if (otherBtn) {
+          const otherIcon = otherBtn.querySelector('i');
+          otherIcon.className = 'play icon';
+        }
+      }
+    });
+    
+    // Reproduzir áudio
+    const playPromise = audio.play();
+    
+    if (playPromise !== undefined) {
+      playPromise.then(() => {
+        icon.className = 'pause icon';
+        setupAudioEventListeners(audioId);
+      }).catch((error) => {
+        console.error('Erro ao reproduzir áudio:', error);
+      });
+    } else {
+      icon.className = 'pause icon';
+      setupAudioEventListeners(audioId);
+    }
+    
+  } else {
+    audio.pause();
+    icon.className = 'play icon';
+  }
+}
+
+// Setup event listeners para áudio específico  
+function setupAudioEventListeners(audioId) {
+  const audio = document.querySelector(`audio[data-id="${audioId}"]`);
+  if (!audio) return;
+  
+  // Remove listeners existentes para evitar duplicação
+  audio.removeEventListener('timeupdate', audio._timeUpdateHandler);
+  audio.removeEventListener('loadedmetadata', audio._metadataHandler);
+  audio.removeEventListener('ended', audio._endedHandler);
+  
+  // Duration display quando metadata carrega
+  audio._metadataHandler = function() {
+    const durationEl = audio.closest('.whatsapp-audio-player').querySelector('.audio-duration');
+    if (durationEl && audio.duration) {
+      durationEl.textContent = formatAudioTime(audio.duration);
+    }
+  };
+  
+  // Update progress durante reprodução
+  audio._timeUpdateHandler = function() {
+    const currentTimeEl = audio.closest('.whatsapp-audio-player').querySelector('.audio-current-time');
+    const progressOverlay = audio.closest('.whatsapp-audio-player').querySelector('.audio-progress-overlay');
+    
+    if (currentTimeEl) {
+      currentTimeEl.textContent = formatAudioTime(audio.currentTime);
+    }
+    
+    if (progressOverlay && audio.duration > 0) {
+      const progress = (audio.currentTime / audio.duration) * 100;
+      progressOverlay.style.width = `${progress}%`;
+    }
+  };
+  
+  // Reset quando áudio termina
+  audio._endedHandler = function() {
+    const playBtn = document.querySelector(`.audio-play-btn[data-audio="${audioId}"]`);
+    const icon = playBtn.querySelector('i');
+    const progressOverlay = audio.closest('.whatsapp-audio-player').querySelector('.audio-progress-overlay');
+    
+    icon.className = 'play icon';
+    if (progressOverlay) {
+      progressOverlay.style.width = '0%';
+    }
+  };
+  
+  audio.addEventListener('loadedmetadata', audio._metadataHandler);
+  audio.addEventListener('timeupdate', audio._timeUpdateHandler);
+  audio.addEventListener('ended', audio._endedHandler);
+}
+
+// Mudar velocidade do áudio
+function changeAudioSpeed(audioId) {
+  const audio = document.querySelector(`audio[data-id="${audioId}"]`);
+  const speedBtn = document.querySelector(`.speed-btn[data-audio="${audioId}"]`);
+  
+  if (!audio || !speedBtn) return;
+  
+  const currentSpeed = parseFloat(speedBtn.getAttribute('data-speed'));
+  let newSpeed;
+  
+  switch (currentSpeed) {
+    case 1:
+      newSpeed = 1.5;
+      break;
+    case 1.5:
+      newSpeed = 2;
+      break;
+    case 2:
+      newSpeed = 1;
+      break;
+    default:
+      newSpeed = 1;
+  }
+  
+  audio.playbackRate = newSpeed;
+  speedBtn.setAttribute('data-speed', newSpeed);
+  speedBtn.textContent = `${newSpeed}x`;
+}
+
+// Seek no áudio baseado na posição do clique
+function seekAudio(audioId, percentage) {
+  const audio = document.querySelector(`audio[data-id="${audioId}"]`);
+  if (!audio || !audio.duration) return;
+  
+  audio.currentTime = audio.duration * percentage;
+}
+
+// Formatar tempo do áudio (mm:ss)
+function formatAudioTime(seconds) {
+  if (!seconds || !isFinite(seconds)) return '0:00';
+  
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Função simples para debug de áudio
+function debugAudio(audioId) {
+  const audio = document.querySelector(`audio[data-id="${audioId}"]`);
+  if (audio) {
+    console.log('Audio encontrado:', audio.src, 'Ready state:', audio.readyState, 'Duration:', audio.duration);
+  } else {
+    console.log('Audio não encontrado:', audioId);
+  }
+}
+
+// Inicializar quando DOM carrega
+document.addEventListener('DOMContentLoaded', initializeAudioPlayers);
+
+// Formatar tempo para exibição no chat
+function formatChatTime(timestamp) {
+  const now = new Date();
+  const date = new Date(timestamp);
+  const diff = now.getTime() - timestamp;
+  
+  // Menos de 1 minuto
+  if (diff < 60000) {
+    return 'agora';
+  }
+  
+  // Menos de 1 hora
+  if (diff < 3600000) {
+    const minutes = Math.floor(diff / 60000);
+    return `${minutes}m`;
+  }
+  
+  // Mesmo dia
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  }
+  
+  // Outros dias
+  return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+}
+
+// Ícone de status da mensagem
+function getMessageStatusIcon(status) {
+  return `<span class="chat-message-status ${status}"></span>`;
+}
+
+// Enviar mensagem
+async function sendChatMessage() {
+  const input = document.getElementById('chatMessageInput');
+  if (!input || !chatState.activeContact) return;
+  
+  const text = input.value.trim();
+  if (!text) return;
+  
+  console.log('Sending message:', text, 'to:', chatState.activeContact);
+  
+  // Extrair número do telefone do JID (formato: 5527981120473@s.whatsapp.net)
+  const phoneNumber = chatState.activeContact.split('@')[0];
+  
+  // Limpar input imediatamente para UX responsiva
+  input.value = '';
+  
+  // Adicionar mensagem localmente com status "sending"
+  const timestamp = new Date().getTime();
+  const tempMessageId = 'temp_' + timestamp;
+  const newMessage = {
+    id: tempMessageId,
+    from: 'me',
+    text: text,
+    timestamp: timestamp,
+    fromMe: true,
+    status: 'sending'
+  };
+  
+  // Adicionar à lista local
+  if (!chatState.messages[chatState.activeContact]) {
+    chatState.messages[chatState.activeContact] = [];
+  }
+  chatState.messages[chatState.activeContact].push(newMessage);
+  
+  // Re-renderizar mensagens
+  renderMessages(chatState.activeContact);
+  
+  // Scroll para baixo
+  const messagesContainer = document.getElementById('chatMessagesContainer');
+  if (messagesContainer) {
+    setTimeout(() => {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }, 100);
+  }
+  
+  try {
+    // Enviar via API real
+    const response = await fetch('/chat/send/text', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'token': chatState.instanceToken
+      },
+      body: JSON.stringify({
+        Phone: phoneNumber,
+        Body: text
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const result = await response.json();
+    console.log('Message sent successfully:', result);
+    
+    // Atualizar status da mensagem para "sent"
+    const messageIndex = chatState.messages[chatState.activeContact].findIndex(msg => msg.id === tempMessageId);
+    if (messageIndex >= 0) {
+      chatState.messages[chatState.activeContact][messageIndex].status = 'sent';
+      if (result.data && result.data.id) {
+        // Usar ID real da mensagem se disponível
+        chatState.messages[chatState.activeContact][messageIndex].id = result.data.id;
+      }
+      renderMessages(chatState.activeContact);
+    }
+    
+  } catch (error) {
+    console.error('Error sending message:', error);
+    
+    // Marcar mensagem como erro
+    const messageIndex = chatState.messages[chatState.activeContact].findIndex(msg => msg.id === tempMessageId);
+    if (messageIndex >= 0) {
+      chatState.messages[chatState.activeContact][messageIndex].status = 'error';
+      renderMessages(chatState.activeContact);
+    }
+    
+    // Mostrar erro para o usuário
+    showError('Erro ao enviar mensagem: ' + error.message);
+  }
+}
+
+// Cleanup quando fechar o chat
+function cleanupChat() {
+  console.log('Cleaning up chat...');
+  
+  // Desconectar WebSocket se ativo
+  if (chatState.websocket) {
+    chatState.websocket.close();
+    chatState.websocket = null;
+  }
+  
+  // Reset do estado
+  chatState.active = false;
+  chatState.instanceId = null;
+  chatState.instanceToken = null;
+  chatState.instanceName = null;
+  chatState.activeContact = null;
+}
+
+// =====================================
+// WEBSOCKET REAL-TIME FUNCTIONS  
+// =====================================
+
+// Formatar JID para exibição amigável
+function formatJIDForDisplay(jid) {
+  if (!jid) return 'Contato Desconhecido';
+  
+  // Remover sufixos do WhatsApp
+  let displayJID = jid.replace('@s.whatsapp.net', '').replace('@g.us', '');
+  
+  // Se for um número, formatá-lo
+  if (/^\d+$/.test(displayJID)) {
+    if (displayJID.startsWith('55') && displayJID.length >= 12) {
+      // Formato brasileiro: +55 11 99999-9999
+      const ddd = displayJID.substring(2, 4);
+      const number = displayJID.substring(4);
+      if (number.length === 9) {
+        return `+55 ${ddd} ${number.substring(0, 5)}-${number.substring(5)}`;
+      } else if (number.length === 8) {
+        return `+55 ${ddd} ${number.substring(0, 4)}-${number.substring(4)}`;
+      }
+    }
+    
+    // Formato genérico para outros países
+    return `+${displayJID}`;
+  }
+  
+  return displayJID;
+}
+
+// =====================================
+// CHAT DIRECT LINK FUNCTIONS
+// =====================================
+
+// Gerar link direto para o chat
+function generateChatLink(instanceId, token, instanceName) {
+  const baseUrl = window.location.origin;
+  const path = window.location.pathname;
+  return `${baseUrl}${path}#token=${token}&instance=${instanceId}&chat=1`;
+}
+
+// Copiar link direto do chat
+async function copyChatLink(instanceId, token, instanceName) {
+  try {
+    const chatLink = generateChatLink(instanceId, token, instanceName);
+    const success = await copyToClipboard(chatLink);
+    
+    if (success) {
+      showSuccess('Link do chat copiado! Compartilhe para acesso direto ao chat.');
+    } else {
+      // Fallback: mostrar o link em modal para copiar manualmente
+      showChatLinkModal(chatLink, instanceName);
+    }
+  } catch (error) {
+    console.error('Error copying chat link:', error);
+    showError('Erro ao copiar link do chat');
+  }
+}
+
+// Mostrar modal com link para cópia manual
+function showChatLinkModal(chatLink, instanceName) {
+  const modalHtml = `
+    <div class="ui modal" id="chatLinkModal">
+      <div class="header">
+        <i class="linkify icon"></i> Link Direto do Chat - ${instanceName}
+      </div>
+      <div class="content">
+        <div class="ui message info">
+          <div class="header">Compartilhe este link para acesso direto ao chat:</div>
+          <p>Qualquer pessoa com este link poderá acessar o chat da instância <strong>${instanceName}</strong> diretamente.</p>
+        </div>
+        <div class="ui form">
+          <div class="field">
+            <label>Link do Chat:</label>
+            <div class="ui action input">
+              <input type="text" value="${chatLink}" readonly id="chatLinkInput">
+              <button class="ui button" onclick="copyFromInput()">
+                <i class="copy icon"></i> Copiar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="ui button" onclick="$('#chatLinkModal').modal('hide')">Fechar</button>
+        <button class="ui primary button" onclick="window.open('${chatLink}', '_blank')">
+          <i class="external icon"></i> Testar Link
+        </button>
+      </div>
+    </div>
+  `;
+  
+  // Remover modal anterior se existir
+  $('#chatLinkModal').remove();
+  
+  // Adicionar e mostrar novo modal
+  $('body').append(modalHtml);
+  $('#chatLinkModal').modal('show');
+}
+
+// Copiar do input no modal
+function copyFromInput() {
+  const input = document.getElementById('chatLinkInput');
+  input.select();
+  document.execCommand('copy');
+  showSuccess('Link copiado para área de transferência!');
+  $('#chatLinkModal').modal('hide');
+}
+
+// Auto-abrir chat quando acessado via link direto
+function autoOpenChatFromUrl(instanceId, token) {
+  console.log('Auto-opening chat for instance:', instanceId);
+  
+  // Verificar se temos dados das instâncias carregados
+  if (!instancesCache || instancesCache.length === 0) {
+    // Se não tem cache ainda, tentar novamente em 1 segundo
+    setTimeout(() => {
+      autoOpenChatFromUrl(instanceId, token);
+    }, 1000);
+    return;
+  }
+  
+  // Procurar a instância na cache
+  const instance = instancesCache.find(inst => inst.id === instanceId);
+  
+  if (!instance) {
+    showError('Instância não encontrada ou não acessível');
+    return;
+  }
+  
+  // Verificar se a instância está conectada e logada
+  if (!instance.connected || !instance.loggedIn) {
+    showError(`Instância "${instance.name}" deve estar conectada e logada para usar o chat`);
+    return;
+  }
+  
+  // Abrir o chat da instância
+  try {
+    openInstanceChat(instanceId, token, instance.name);
+    showSuccess(`Chat da instância "${instance.name}" aberto automaticamente!`);
+  } catch (error) {
+    console.error('Error auto-opening chat:', error);
+    showError('Erro ao abrir o chat automaticamente');
+  }
+}
+
+// =====================================
+// NOTIFICATION SOUND FUNCTIONS
+// =====================================
+
+// Verificar se deve tocar notificação
+function shouldPlayNotification(message) {
+  return !message.from_me; // Só tocar se não for mensagem nossa
+}
+
+// Som de notificação ICQ
+window.testSimpleSound = function() {
+  try {
+    const audio = new Audio('https://api.stevo.chat/storage/v1/object/public/imagens-sistema/icq-old-sound.mp3');
+    audio.volume = 0.7;
+    audio.play().catch(() => {
+      // Falha silenciosa - usuário pode precisar interagir primeiro
+    });
+  } catch (error) {
+    // Falha silenciosa - áudio não é crítico
+  }
+};
+
+// =====================================
+// WEBSOCKET REAL-TIME FUNCTIONS  
+// =====================================
+
+// Conectar WebSocket para atualizações em tempo real
+function connectChatWebSocket() {
+  console.log('Connecting to chat WebSocket...');
+  
+  // Determinar protocolo WebSocket baseado no protocolo atual
+  const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${wsProtocol}//${window.location.host}/chat/stream?token=${chatState.instanceToken}`;
+  
+  try {
+    chatState.websocket = new WebSocket(wsUrl);
+    
+    chatState.websocket.onopen = function(event) {
+      console.log('Chat WebSocket connected');
+      document.getElementById('chatInstanceStatus').textContent = 'Online • Tempo Real';
+    };
+    
+    chatState.websocket.onmessage = function(event) {
+      console.log('WebSocket message received:', event.data);
+      
+      try {
+        const message = JSON.parse(event.data);
+        handleChatWebSocketMessage(message);
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    };
+    
+    chatState.websocket.onclose = function(event) {
+      console.log('Chat WebSocket disconnected', event.code, event.reason);
+      document.getElementById('chatInstanceStatus').textContent = 'Offline';
+      
+      // Tentar reconectar em 5 segundos se o chat ainda estiver ativo
+      if (chatState.active) {
+        setTimeout(() => {
+          if (chatState.active) {
+            console.log('Attempting to reconnect WebSocket...');
+            connectChatWebSocket();
+          }
+        }, 5000);
+      }
+    };
+    
+    chatState.websocket.onerror = function(error) {
+      console.error('Chat WebSocket error:', error);
+      document.getElementById('chatInstanceStatus').textContent = 'Erro de Conexão';
+    };
+    
+    // Enviar ping periodicamente para manter conexão viva
+    chatState.pingInterval = setInterval(() => {
+      if (chatState.websocket && chatState.websocket.readyState === WebSocket.OPEN) {
+        chatState.websocket.send(JSON.stringify({
+          type: 'ping',
+          timestamp: new Date().getTime()
+        }));
+      }
+    }, 30000);
+    
+  } catch (error) {
+    console.error('Error creating WebSocket connection:', error);
+    document.getElementById('chatInstanceStatus').textContent = 'Erro de Conexão';
+  }
+}
+
+// Processar mensagens do WebSocket
+function handleChatWebSocketMessage(message) {
+  console.log('Processing WebSocket message:', message);
+  
+  switch (message.type) {
+    case 'pong':
+      // Resposta do ping - conexão ativa
+      break;
+      
+    case 'message':
+      if (message.event === 'new_message') {
+        handleNewMessage(message.data);
+      }
+      break;
+      
+    case 'system':
+      if (message.event === 'connected') {
+        console.log('WebSocket system message:', message.data);
+      }
+      break;
+      
+    default:
+      console.log('Unknown WebSocket message type:', message.type);
+  }
+}
+
+// Processar nova mensagem recebida via WebSocket
+function handleNewMessage(data) {
+  console.log('New message received:', data);
+  
+  const conversation = data.conversation;
+  const message = data.message;
+  
+  if (!conversation || !message) {
+    console.error('Invalid message data received');
+    return;
+  }
+  
+  // Atualizar lista de conversas preservando dados de perfil
+  const existingConvIndex = chatState.conversations.findIndex(c => c.id === conversation.jid);
+  
+  if (existingConvIndex >= 0) {
+    // Atualizar conversa existente PRESERVANDO dados de perfil
+    const existingConv = chatState.conversations[existingConvIndex];
+    
+    // Atualizar apenas os campos necessários, preservando perfil
+    existingConv.lastMessage = message.text_content || '[Media message]';
+    existingConv.timestamp = message.timestamp;
+    
+    // Incrementar contador de não lidas apenas se não for mensagem nossa
+    if (!message.from_me && conversation.jid !== chatState.activeContact) {
+      existingConv.unread = (existingConv.unread || 0) + 1;
+    }
+    
+    // Mover conversa para o topo da lista (ordenação por última mensagem)
+    chatState.conversations.splice(existingConvIndex, 1);
+    chatState.conversations.unshift(existingConv);
+    
+  } else {
+    // Adicionar nova conversa (pode não ter dados de perfil ainda)
+    const newConversation = {
+      id: conversation.jid,
+      name: conversation.display_name || formatJIDForDisplay(conversation.jid),
+      displayName: conversation.display_name || formatJIDForDisplay(conversation.jid),
+      lastMessage: message.text_content || '[Media message]',
+      timestamp: message.timestamp,
+      unread: message.from_me ? 0 : 1, // Se não é nossa mensagem, marcar como não lida
+      avatar: null,
+      profilePicUrl: null,
+      profileName: null
+    };
+    
+    // Adicionar no topo da lista
+    chatState.conversations.unshift(newConversation);
+    
+    // Tentar carregar perfil da nova conversa
+    getContactProfile(conversation.jid).then(profile => {
+      newConversation.profileName = profile.profileName;
+      newConversation.profilePicUrl = profile.profilePicUrl;
+      newConversation.displayName = profile.displayName;
+      newConversation.number = profile.number;
+      
+      if (!newConversation.name || newConversation.name === newConversation.id) {
+        newConversation.name = profile.displayName;
+      }
+      
+      // Re-renderizar após carregar perfil
+      renderConversationsList();
+    }).catch(err => {
+      console.warn('Failed to load profile for new conversation:', conversation.jid);
+    });
+  }
+  
+  // Re-renderizar lista de conversas
+  renderConversationsList();
+  
+  // 🔊 Reproduzir som de notificação ICQ se não for nossa mensagem
+  if (shouldPlayNotification(message)) {
+    window.testSimpleSound();
+  }
+  
+  // Se a conversa ativa for a mesma da mensagem, adicionar mensagem à lista
+  if (chatState.activeContact === conversation.jid) {
+    const frontendMessage = {
+      id: message.message_id,
+      from: message.from_jid,
+      text: message.text_content,
+      timestamp: message.timestamp,
+      fromMe: message.from_me,
+      status: message.status,
+      messageType: message.message_type || 'text',
+      mediaURL: message.media_url || '',
+      mediaType: message.media_type || '',
+      fileName: message.file_name || '',
+      fileSize: message.file_size || 0,
+      thumbnailURL: message.thumbnail_url || ''
+    };
+    
+    // Adicionar à lista de mensagens se não existir
+    if (!chatState.messages[conversation.jid]) {
+      chatState.messages[conversation.jid] = [];
+    }
+    
+    const existingMessageIndex = chatState.messages[conversation.jid].findIndex(m => m.id === message.message_id);
+    if (existingMessageIndex === -1) {
+      chatState.messages[conversation.jid].push(frontendMessage);
+      renderMessages(conversation.jid);
+      
+      // Scroll para baixo
+      const messagesContainer = document.getElementById('chatMessagesContainer');
+      if (messagesContainer) {
+        setTimeout(() => {
+          messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }, 100);
+      }
+    }
+  }
+  
+  // Reproduzir som de notificação se a mensagem não for nossa
+  if (!message.from_me) {
+    playNotificationSound();
+  }
+}
+
+// Reproduzir som de notificação (placeholder)
+function playNotificationSound() {
+  // Pode implementar reprodução de som aqui se necessário
+  console.log('🔔 Nova mensagem recebida');
+}
+
+// Event listener para Enter no input de mensagem
+document.addEventListener('keypress', function(e) {
+  if (e.target && e.target.id === 'chatMessageInput' && e.key === 'Enter') {
+    e.preventDefault();
+    sendChatMessage();
+  }
+});

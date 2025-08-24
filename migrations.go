@@ -65,6 +65,11 @@ var migrations = []Migration{
 		Name:  "add_logo_url",
 		UpSQL: addLogoURLSQL,
 	},
+	{
+		ID:    8,
+		Name:  "add_chat_tables",
+		UpSQL: addChatTablesSQL,
+	},
 }
 
 const changeIDToStringSQL = `
@@ -588,3 +593,54 @@ func addColumnIfNotExistsSQLite(tx *sqlx.Tx, tableName, columnName, columnDef st
 	}
 	return nil
 }
+
+const addChatTablesSQL = `
+-- Chat conversations table
+CREATE TABLE IF NOT EXISTS conversations (
+    id VARCHAR(255) PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    jid VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL DEFAULT '',
+    display_name VARCHAR(255) NOT NULL DEFAULT '',
+    last_message TEXT DEFAULT '',
+    last_message_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    unread_count INTEGER DEFAULT 0,
+    avatar_url TEXT DEFAULT '',
+    is_group BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, jid),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Chat messages table
+CREATE TABLE IF NOT EXISTS messages (
+    id VARCHAR(255) PRIMARY KEY,
+    conversation_id VARCHAR(255) NOT NULL,
+    message_id VARCHAR(255) DEFAULT '',
+    from_jid VARCHAR(255) NOT NULL,
+    to_jid VARCHAR(255) NOT NULL,
+    from_me BOOLEAN NOT NULL DEFAULT FALSE,
+    message_type VARCHAR(50) DEFAULT 'text',
+    text_content TEXT DEFAULT '',
+    media_url TEXT DEFAULT '',
+    media_type VARCHAR(50) DEFAULT '',
+    file_name VARCHAR(255) DEFAULT '',
+    file_size BIGINT DEFAULT 0,
+    thumbnail_url TEXT DEFAULT '',
+    quoted_message_id VARCHAR(255) DEFAULT '',
+    status VARCHAR(20) DEFAULT 'sent',
+    timestamp TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+
+-- Indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_jid ON conversations(jid);
+CREATE INDEX IF NOT EXISTS idx_conversations_last_message_time ON conversations(last_message_time DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_from_me ON messages(from_me);
+CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status);
+`

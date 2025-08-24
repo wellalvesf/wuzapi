@@ -212,6 +212,9 @@ func main() {
 	}
 	s.routes()
 
+	// Initialize Chat S3 from environment variables
+	InitializeChatS3FromEnv()
+
 	s.connectOnStartup()
 
 	srv := &http.Server{
